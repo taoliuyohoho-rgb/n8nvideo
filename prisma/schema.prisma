@@ -1,0 +1,460 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// 用户表
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String?  // 密码哈希
+  role      String   @default("viewer") // admin, manager, operator, viewer
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联
+  videos Video[]
+
+  @@map("users")
+}
+
+// 商品库表
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String
+  subcategory String?
+  sellingPoints String? // JSON格式存储卖点
+  skuImages   String?   // JSON格式存储SKU图片URLs
+  targetCountries String? // JSON格式存储目标国家
+  
+  // 痛点信息
+  painPoints String? // JSON格式存储痛点列表 (最多10个)
+  painPointsLastUpdate DateTime? // 痛点最后更新时间
+  painPointsSource String? // JSON格式存储痛点来源信息
+   
+  // 来源信息
+  source      String   @default("manual") // manual, user_upload, user_analysis
+  sourceUserId String? // 来源用户ID
+  isUserGenerated Boolean @default(false) // 是否用户生成
+  needsReview Boolean @default(false) // 是否需要审核
+  lastUserUpdate DateTime? // 最后用户更新时间
+   
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  templates Template[]
+  productMappings ProductMapping[]
+  painPointAnalyses ProductPainPoint[] // 保留详细分析记录
+
+  @@map("products")
+}
+
+// 模板表 (基于你的Google Sheets)
+model Template {
+  id          String   @id @default(cuid())
+  templateId  String   @unique // 对应Google Sheets的TemplateID (TMP001等)
+  name        String   // TemplateName
+  description String?  // TemplatePrompt
+  productId   String   // 关联的商品ID
+  structure   String   // Structure
+  hookPool    String   // HookPool
+  videoStylePool String // VideoStylePool
+  tonePool    String   // TonePool
+  suggestedLength String // SuggestedLength
+  recommendedCategories String // RecommendedCategories
+  targetCountries String // TargetCountries
+  templatePrompt String // TemplatePrompt
+  
+  // 来源信息
+  source      String   @default("manual") // manual, user_video_analysis, user_modified
+  sourceVideoId String? // 来源视频ID（如果是用户视频解析）
+  sourceUserId String? // 来源用户ID
+  isUserGenerated Boolean @default(false) // 是否用户生成
+  needsReview Boolean @default(false) // 是否需要审核
+  
+  // AI配置
+  videoAnalysisAI String? // 视频分析AI: gemini, gpt4, claude
+  promptGenerationAI String? // Prompt生成AI: gemini, gpt4, claude
+  videoGenerationAI String? // 视频生成AI: sora, veo, doubao
+  
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  product Product @relation(fields: [productId], references: [id])
+  videos  Video[]
+  templateAnalyses TemplateAnalysis[]
+
+  @@map("templates")
+}
+
+// 视频表
+model Video {
+  id          String   @id @default(cuid())
+  templateId  String
+  userId      String
+  
+  // 视频信息
+  videoUrl    String?  // 视频文件URL
+  videoTitle  String?  // 视频标题
+  videoDescription String? // 视频描述
+  
+  // 生成信息
+  generatedPrompt String? // 生成的prompt
+  promptGenerationAI String? // 使用的prompt生成AI
+  videoGenerationAI String? // 使用的视频生成AI
+  
+  // 状态
+  status      String   @default("generated") // generated, published, archived
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  template Template @relation(fields: [templateId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  adData   AdData[]
+
+  @@map("videos")
+}
+
+// 广告数据表
+model AdData {
+  id          String   @id @default(cuid())
+  videoId     String
+  platform    String   // tiktok, facebook, google, shopee
+  shopId      String?  // 店铺ID
+  
+  // 基础指标
+  spend       Float?   // 花费
+  impressions Int?     // 展示次数
+  clicks      Int?     // 点击次数
+  views       Int?     // 观看次数
+  ctr         Float?   // 点击率
+  ctr3s       Float?   // 3秒完播率
+  ctrComplete Float?   // 完播率
+  
+  // 转化指标
+  conversions Int?     // 转化次数
+  cvr         Float?   // 转化率
+  gmv         Float?   // GMV
+  orders      Int?     // 订单数
+  
+  // 互动指标
+  likes       Int?     // 点赞数
+  shares      Int?     // 分享数
+  comments    Int?     // 评论数
+  
+  // 用户画像
+  userDemographics String? // JSON格式存储用户画像
+  
+  // 时间维度
+  date        DateTime // 数据日期
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  video Video @relation(fields: [videoId], references: [id])
+
+  @@map("ad_data")
+}
+
+// 模板分析表（用于AI学习优化）
+model TemplateAnalysis {
+  id        String   @id @default(cuid())
+  templateId String
+  videoId   String?  // 关联的视频ID
+  analysis  String   // JSON格式存储分析结果
+  score     Float    // 模板匹配分数
+  createdAt DateTime @default(now())
+
+  // 关联
+  template Template @relation(fields: [templateId], references: [id])
+
+  @@map("template_analyses")
+}
+
+// 竞品分析表
+model CompetitorAnalysis {
+  id          String   @id @default(cuid())
+  url         String   @unique
+  platform    String   // tiktok, youtube, instagram, facebook
+  title       String?
+  description String?
+  thumbnail   String?
+  
+  // 视频信息
+  duration    Int?
+  views       Int?
+  likes       Int?
+  comments    Int?
+  shares      Int?
+  uploadDate  DateTime?
+  
+  // 内容分析
+  script      String?   // JSON格式存储脚本
+  keyPoints   String?   // JSON格式存储关键点
+  callToAction String?  // 行动号召
+  hashtags    String?   // JSON格式存储标签
+  mentions    String?   // JSON格式存储提及
+  
+  // 营销信息
+  productName String?
+  sellingPoints String? // JSON格式存储卖点
+  marketingInfo String? // JSON格式存储营销信息
+  targetAudience String? // JSON格式存储目标受众
+  price       Float?
+  currency    String?
+  discount    String?
+  
+  // 技术指标
+  videoQuality Float?
+  audioQuality Float?
+  editingStyle String?
+  colorGrading String?
+  transitions  String?   // JSON格式存储转场效果
+  
+  // AI分析结果
+  aiAnalysis  String?   // JSON格式存储AI分析结果
+  
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("competitor_analyses")
+}
+
+// 参考视频表
+model ReferenceVideo {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // upload, url
+  source      String   // 文件路径或URL
+  thumbnail   String?
+  
+  // 视频信息
+  duration    Int?
+  size        Int?
+  format      String?
+  
+  // 分析结果
+  analysis    String?   // JSON格式存储分析结果
+  
+  // 元数据
+  uploadedAt  DateTime @default(now())
+  uploadedBy  String
+  tags        String?   // JSON格式存储标签
+  category    String
+  description String?
+  
+  // 使用统计
+  timesUsed   Int       @default(0)
+  lastUsed    DateTime?
+  performanceScore Float?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("reference_videos")
+}
+
+// 视频分析表
+model VideoAnalysis {
+  id          String   @id @default(cuid())
+  videoId     String?  // 关联的视频ID
+  referenceVideoId String? // 关联的参考视频ID
+  competitorId String? // 关联的竞品ID
+  
+  // 基础元数据
+  duration    Int
+  width       Int
+  height      Int
+  fps         Int
+  bitrate     Int
+  format      String
+  size        Int
+  
+  // 质量指标
+  resolution  String
+  clarity     Float
+  stability   Float
+  colorAccuracy Float
+  
+  // 内容分析
+  scenes      String?   // JSON格式存储场景
+  objects     String?   // JSON格式存储物体
+  text        String?   // JSON格式存储文本
+  audio       String?   // JSON格式存储音频分析
+  
+  // AI分析结果
+  aiAnalysis  String?   // JSON格式存储AI分析结果
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("video_analyses")
+}
+
+// 排序结果表
+model RankingResult {
+  id          String   @id @default(cuid())
+  sessionId   String   // 排序会话ID
+  algorithm   String   // coarse, fine, hybrid
+  candidates  String   // JSON格式存储候选结果
+  totalCount  Int
+  processingTime Int   // 处理时间(ms)
+  context     String?  // JSON格式存储上下文
+  userProfile String?  // JSON格式存储用户画像
+  
+  createdAt   DateTime @default(now())
+
+  @@map("ranking_results")
+}
+
+// 商品-广告平台映射表
+model ProductMapping {
+  id                String   @id @default(cuid())
+  productId         String
+  platform          String   // facebook, tiktok, google, shopee
+  platformProductId String   // 广告平台的产品ID
+  platformName      String   // 广告平台显示的产品名称
+  confidence        Float    // AI置信度 0-1
+  status            String   @default("pending") // pending, confirmed, rejected
+  suggestedBy       String   @default("ai") // ai, manual
+  createdAt         DateTime @default(now())
+  confirmedAt       DateTime?
+  confirmedBy       String?
+  
+  // 关联
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("product_mappings")
+}
+
+// 产品痛点分析表
+model ProductPainPoint {
+  id          String   @id @default(cuid())
+  productId   String
+  platform    String   // shopee, tiktok, amazon, etc.
+  productUrl  String?  // 产品链接
+  productName String   // 产品名称
+  
+  // 痛点信息
+  painPoints  String   // JSON格式存储痛点列表
+  painCategories String? // JSON格式存储痛点分类
+  severity    String?  // 痛点严重程度: low, medium, high
+  frequency   Int?     // 提及频次
+  
+  // 分析结果
+  aiAnalysis String?  // JSON格式存储AI分析结果
+  keywords   String?  // JSON格式存储关键词
+  sentiment  String?  // 情感分析: positive, negative, neutral
+  
+  // 元数据
+  sourceData String?  // JSON格式存储原始数据
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  // 关联
+  product Product @relation(fields: [productId], references: [id])
+  comments ProductComment[]
+  
+  @@map("product_pain_points")
+}
+
+// 产品评论表
+model ProductComment {
+  id              String   @id @default(cuid())
+  painPointId     String
+  platform        String   // 评论来源平台
+  commentId       String   // 平台评论ID
+  content         String   // 评论内容
+  rating          Int?     // 评分 1-5
+  author          String?  // 评论者
+  publishDate     DateTime? // 发布时间
+  likes           Int?     // 点赞数
+  replies         Int?     // 回复数
+  
+  // 分析结果
+  sentiment       String?  // 情感分析
+  keywords        String?  // JSON格式存储关键词
+  painPointTags   String?  // JSON格式存储痛点标签
+  
+  createdAt       DateTime @default(now())
+  
+  // 关联
+  painPoint ProductPainPoint @relation(fields: [painPointId], references: [id])
+  
+  @@map("product_comments")
+}
+
+// 评论爬取任务表
+model CommentScrapingTask {
+  id          String   @id @default(cuid())
+  productId   String
+  platform    String   // 目标平台
+  keywords    String?  // 搜索关键词
+  status      String   @default("pending") // pending, running, completed, failed
+  progress    Int      @default(0) // 进度百分比
+  
+  // 配置
+  maxComments Int      @default(100) // 最大评论数
+  dateRange   String?  // 时间范围
+  filters     String?  // JSON格式存储过滤条件
+  
+  // 结果
+  totalFound  Int?     // 找到的评论总数
+  scraped     Int?     // 已爬取的评论数
+  errorLog    String?  // 错误日志
+  
+  createdAt   DateTime @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  
+  @@map("comment_scraping_tasks")
+}
+
+// 用户提交的风格和商品信息更新表
+model UserSubmission {
+  id          String   @id @default(cuid())
+  userId      String   // 提交用户ID
+  type        String   // style, product
+  targetId    String?  // 目标ID（风格或商品ID）
+  
+  // 提交内容
+  data        String   // JSON格式存储提交的数据
+  originalData String? // JSON格式存储原始数据（用于对比）
+  
+  // 来源信息
+  source      String   // video_analysis, user_modified, manual_upload
+  sourceVideoId String? // 来源视频ID
+  sourceUrl   String?  // 来源URL
+  
+  // 状态管理
+  status      String   @default("pending") // pending, approved, rejected
+  reviewedBy  String?  // 审核人ID
+  reviewedAt  DateTime? // 审核时间
+  reviewNotes String?  // 审核备注
+  
+  // 处理结果
+  isApplied   Boolean  @default(false) // 是否已应用
+  appliedAt   DateTime? // 应用时间
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("user_submissions")
+}
