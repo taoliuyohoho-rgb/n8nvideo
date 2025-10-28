@@ -342,6 +342,16 @@ export default function AdminPage() {
   })
   const [showPromptEditor, setShowPromptEditor] = useState(false) // 是否显示prompt编辑器
   
+  // 风格模板相关状态
+  const [editingStyle, setEditingStyle] = useState<Style | null>(null)
+  const [showStyleForm, setShowStyleForm] = useState(false)
+  const [styleCategories, setStyleCategories] = useState<string[]>([])
+  
+  // 功能模块开关状态
+  const [showRankingTuning, setShowRankingTuning] = useState(false)
+  const [showDocumentReference, setShowDocumentReference] = useState(false)
+  const [showVideoAnalysis, setShowVideoAnalysis] = useState(false)
+  
   // 调参状态
   const [tuningConfig, setTuningConfig] = useState({
     coarseRanking: {
@@ -1048,6 +1058,38 @@ export default function AdminPage() {
       }
     } catch (error) {
       console.error('保存人设失败:', error)
+      alert('保存失败，请重试')
+    }
+  }
+
+  const handleSaveStyle = async () => {
+    if (!editingStyle) return
+
+    try {
+      const url = editingStyle.id 
+        ? `/api/styles/${editingStyle.id}`
+        : '/api/styles'
+      
+      const response = await fetch(url, {
+        method: editingStyle.id ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editingStyle)
+      })
+      
+      const result = await response.json()
+      if (result.success) {
+        alert(editingStyle.id ? '风格模板更新成功！' : '风格模板添加成功！')
+        setShowStyleForm(false)
+        setEditingStyle(null)
+        // 重新加载风格列表（如果有的话）
+        // loadStyles()
+      } else {
+        alert(`操作失败：${result.error}`)
+      }
+    } catch (error) {
+      console.error('保存风格模板失败:', error)
       alert('保存失败，请重试')
     }
   }
@@ -4170,7 +4212,7 @@ export default function AdminPage() {
                       // 如果已选择商品，类目自动从商品库拉取，不允许修改
                       <div className="flex items-center space-x-2">
                         <Input 
-                          value={editingStyle.category || '未设置'} 
+                          value={editingStyle?.category || '未设置'} 
                           disabled 
                           className="bg-gray-50"
                         />
@@ -4180,7 +4222,7 @@ export default function AdminPage() {
                         {/* 调试信息 */}
                         {process.env.NODE_ENV === 'development' && (
                           <span className="text-xs text-red-500">
-                            DEBUG: productId={editingStyle.productId}
+                            DEBUG: productId={editingStyle?.productId}
                           </span>
                         )}
                       </div>
