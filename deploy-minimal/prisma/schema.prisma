@@ -1,0 +1,371 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String?
+  role      String   @default("viewer")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  videos    Video[]
+
+  @@map("users")
+}
+
+model Product {
+  id                   String             @id @default(cuid())
+  name                 String
+  description          String?
+  category             String
+  subcategory          String?
+  sellingPoints        String?
+  skuImages            String?
+  targetCountries      String?
+  source               String             @default("manual")
+  sourceUserId         String?
+  isUserGenerated      Boolean            @default(false)
+  needsReview          Boolean            @default(false)
+  lastUserUpdate       DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  painPoints           String?
+  painPointsLastUpdate DateTime?
+  painPointsSource     String?
+  productMappings      ProductMapping[]
+  painPointAnalyses    ProductPainPoint[]
+  templates            Template[]
+  styles               Style[]            // 关联的风格
+
+  @@map("products")
+}
+
+model Style {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  category          String   // 从商品库自动拉取，不允许自定义
+  subcategory       String?
+  tone              String
+  scriptStructure   String?  // JSON格式存储脚本结构
+  visualStyle       String?  // JSON格式存储视觉风格
+  targetAudience    String?  // JSON格式存储目标受众
+  productId         String?  // 关联的商品ID，可选
+  templatePerformance Float? // 模板性能评分
+  hookPool          String?  // JSON格式存储钩子池
+  targetCountries   String?  // JSON格式存储目标国家
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  product           Product? @relation(fields: [productId], references: [id])
+  templates         Template[]
+
+  @@map("styles")
+}
+
+model Template {
+  id                    String             @id @default(cuid())
+  templateId            String             @unique
+  name                  String
+  description           String?
+  productId             String
+  styleId               String?            // 关联的风格ID
+  structure             String
+  hookPool              String
+  videoStylePool        String
+  tonePool              String
+  suggestedLength       String
+  recommendedCategories String
+  targetCountries       String
+  templatePrompt        String
+  source                String             @default("manual")
+  sourceVideoId         String?
+  sourceUserId          String?
+  isUserGenerated       Boolean            @default(false)
+  needsReview           Boolean            @default(false)
+  videoAnalysisAI       String?
+  promptGenerationAI    String?
+  videoGenerationAI     String?
+  isActive              Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  templateAnalyses      TemplateAnalysis[]
+  product               Product            @relation(fields: [productId], references: [id])
+  style                 Style?             @relation(fields: [styleId], references: [id])
+  videos                Video[]
+
+  @@map("templates")
+}
+
+model Video {
+  id                 String   @id @default(cuid())
+  templateId         String
+  userId             String
+  videoUrl           String?
+  videoTitle         String?
+  videoDescription   String?
+  generatedPrompt    String?
+  promptGenerationAI String?
+  videoGenerationAI  String?
+  status             String   @default("generated")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  adData             AdData[]
+  user               User     @relation(fields: [userId], references: [id])
+  template           Template @relation(fields: [templateId], references: [id])
+
+  @@map("videos")
+}
+
+model AdData {
+  id               String   @id @default(cuid())
+  videoId          String
+  platform         String
+  shopId           String?
+  spend            Float?
+  impressions      Int?
+  clicks           Int?
+  views            Int?
+  ctr              Float?
+  ctr3s            Float?
+  ctrComplete      Float?
+  conversions      Int?
+  cvr              Float?
+  gmv              Float?
+  orders           Int?
+  likes            Int?
+  shares           Int?
+  comments         Int?
+  userDemographics String?
+  date             DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  video            Video    @relation(fields: [videoId], references: [id])
+
+  @@map("ad_data")
+}
+
+model TemplateAnalysis {
+  id         String   @id @default(cuid())
+  templateId String
+  videoId    String?
+  analysis   String
+  score      Float
+  createdAt  DateTime @default(now())
+  template   Template @relation(fields: [templateId], references: [id])
+
+  @@map("template_analyses")
+}
+
+model CompetitorAnalysis {
+  id             String    @id @default(cuid())
+  url            String    @unique
+  platform       String
+  title          String?
+  description    String?
+  thumbnail      String?
+  duration       Int?
+  views          Int?
+  likes          Int?
+  comments       Int?
+  shares         Int?
+  uploadDate     DateTime?
+  script         String?
+  keyPoints      String?
+  callToAction   String?
+  hashtags       String?
+  mentions       String?
+  productName    String?
+  sellingPoints  String?
+  marketingInfo  String?
+  targetAudience String?
+  price          Float?
+  currency       String?
+  discount       String?
+  videoQuality   Float?
+  audioQuality   Float?
+  editingStyle   String?
+  colorGrading   String?
+  transitions    String?
+  aiAnalysis     String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("competitor_analyses")
+}
+
+model ReferenceVideo {
+  id               String    @id @default(cuid())
+  name             String
+  type             String
+  source           String
+  thumbnail        String?
+  duration         Int?
+  size             Int?
+  format           String?
+  analysis         String?
+  uploadedAt       DateTime  @default(now())
+  uploadedBy       String
+  tags             String?
+  category         String
+  description      String?
+  timesUsed        Int       @default(0)
+  lastUsed         DateTime?
+  performanceScore Float?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("reference_videos")
+}
+
+model VideoAnalysis {
+  id               String   @id @default(cuid())
+  videoId          String?
+  referenceVideoId String?
+  competitorId     String?
+  duration         Int
+  width            Int
+  height           Int
+  fps              Int
+  bitrate          Int
+  format           String
+  size             Int
+  resolution       String
+  clarity          Float
+  stability        Float
+  colorAccuracy    Float
+  scenes           String?
+  objects          String?
+  text             String?
+  audio            String?
+  aiAnalysis       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("video_analyses")
+}
+
+model RankingResult {
+  id             String   @id @default(cuid())
+  sessionId      String
+  algorithm      String
+  candidates     String
+  totalCount     Int
+  processingTime Int
+  context        String?
+  userProfile    String?
+  createdAt      DateTime @default(now())
+
+  @@map("ranking_results")
+}
+
+model ProductMapping {
+  id                String    @id @default(cuid())
+  productId         String
+  platform          String
+  platformProductId String
+  platformName      String
+  confidence        Float
+  status            String    @default("pending")
+  suggestedBy       String    @default("ai")
+  createdAt         DateTime  @default(now())
+  confirmedAt       DateTime?
+  confirmedBy       String?
+  product           Product   @relation(fields: [productId], references: [id])
+
+  @@map("product_mappings")
+}
+
+model ProductPainPoint {
+  id             String           @id @default(cuid())
+  productId      String
+  platform       String
+  productUrl     String?
+  productName    String
+  painPoints     String
+  painCategories String?
+  severity       String?
+  frequency      Int?
+  aiAnalysis     String?
+  keywords       String?
+  sentiment      String?
+  sourceData     String?
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  comments       ProductComment[]
+  product        Product          @relation(fields: [productId], references: [id])
+
+  @@map("product_pain_points")
+}
+
+model ProductComment {
+  id            String           @id @default(cuid())
+  painPointId   String
+  platform      String
+  commentId     String
+  content       String
+  rating        Int?
+  author        String?
+  publishDate   DateTime?
+  likes         Int?
+  replies       Int?
+  sentiment     String?
+  keywords      String?
+  painPointTags String?
+  createdAt     DateTime         @default(now())
+  painPoint     ProductPainPoint @relation(fields: [painPointId], references: [id])
+
+  @@map("product_comments")
+}
+
+model CommentScrapingTask {
+  id          String    @id @default(cuid())
+  productId   String
+  platform    String
+  keywords    String?
+  status      String    @default("pending")
+  progress    Int       @default(0)
+  maxComments Int       @default(100)
+  dateRange   String?
+  filters     String?
+  totalFound  Int?
+  scraped     Int?
+  errorLog    String?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@map("comment_scraping_tasks")
+}
+
+model UserSubmission {
+  id            String    @id @default(cuid())
+  userId        String
+  type          String
+  targetId      String?
+  data          String
+  originalData  String?
+  source        String
+  sourceVideoId String?
+  sourceUrl     String?
+  status        String    @default("pending")
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  reviewNotes   String?
+  isApplied     Boolean   @default(false)
+  appliedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("user_submissions")
+}

@@ -77,6 +77,13 @@ export interface PlatformParser {
   extractMetadata(html: string): Partial<CompetitorData>
 }
 
+import { PrismaClient } from '@prisma/client'
+import { aiExecutor } from '@/src/services/ai/AiExecutor'
+import { recommendRank } from '@/src/services/recommendation/recommend'
+import '@/src/services/recommendation/index'
+
+const prisma = new PrismaClient()
+
 export class CompetitorAnalysisService {
   private config: CompetitorConfig
   private parsers: Map<string, PlatformParser> = new Map()
@@ -120,10 +127,12 @@ export class CompetitorAnalysisService {
       // 3. 解析数据
       const data = await parser.parseUrl(url)
       
-      // 4. AI 分析（可选）
-      // if (this.config.aiAnalysis?.enabled) {
-      //   data.aiAnalysis = await this.performAIAnalysis(data)
-      // }
+      // 4. AI 分析
+      try {
+        data.aiAnalysis = await this.performAIAnalysis(data)
+      } catch (e) {
+        console.warn('AI analysis skipped or failed:', e)
+      }
 
       return data
 
@@ -168,17 +177,110 @@ export class CompetitorAnalysisService {
    * AI 分析
    */
   private async performAIAnalysis(data: CompetitorData): Promise<CompetitorData['aiAnalysis']> {
-    // 这里应该调用 AI 服务进行深度分析
+    // 1) 选择Prompt（task->prompt）
+    const promptReco = await recommendRank({
+      scenario: 'task->prompt',
+      task: {
+        taskType: 'product-competitor',
+        contentType: 'text',
+      },
+      context: {
+        channel: data.platform,
+      },
+      constraints: {
+        maxLatencyMs: 10000,
+      },
+    })
+
+    // 读取Prompt内容
+    let promptText = ''
+    try {
+      const tpl = await prisma.promptTemplate.findUnique({ where: { id: promptReco.chosen.id } })
+      if (tpl?.content) {
+        promptText = tpl.content
+          .replace(/\{\{competitorUrl\}\}/g, data.url)
+          .replace(/\{\{category\}\}/g, '')
+          .replace(/\{\{videoTitle\}\}/g, data.title || '')
+          .replace(/\{\{videoDescription\}\}/g, data.description || '')
+      }
+    } catch {}
+    if (!promptText) {
+      // 兜底Prompt
+      promptText = `请分析以下竞品内容，输出JSON：\n\nURL: ${data.url}\n平台: ${data.platform}\n标题: ${data.title}\n描述: ${data.description}\n\n请输出：{\n  "sentiment": "positive|neutral|negative",\n  "emotion": ["..."],\n  "topics": ["..."],\n  "performanceScore": 0.0-1.0,\n  "recommendations": ["..."]\n}`
+    }
+
+    // 2) 选择模型（task->model）
+    const modelReco = await recommendRank({
+      scenario: 'task->model',
+      task: {
+        taskType: 'competitor-analysis',
+        contentType: 'text',
+        jsonRequirement: true,
+      },
+      context: {
+        channel: data.platform,
+      },
+      constraints: {
+        requireJsonMode: true,
+        maxLatencyMs: 10000,
+      },
+    })
+
+    // 3) Provider映射
+    const chosenModelId = modelReco.chosen.id
+    const modelRow = await prisma.estimationModel.findUnique({ where: { id: chosenModelId } })
+    const mapProvider = (p?: string): 'gemini' | 'doubao' | 'openai' | 'deepseek' | 'claude' => {
+      if (!p) return 'gemini'
+      if (/google/i.test(p)) return 'gemini'
+      if (/字节|doubao|volc|byte/i.test(p)) return 'doubao'
+      if (/openai/i.test(p)) return 'openai'
+      if (/deepseek/i.test(p)) return 'deepseek'
+      if (/anthropic|claude/i.test(p)) return 'claude'
+      return 'gemini'
+    }
+    const provider = mapProvider(modelRow?.provider)
+
+    // 4) 执行AI
+    let text = await aiExecutor.enqueue(() => aiExecutor.execute({ provider, prompt: promptText, useSearch: provider === 'gemini' }))
+    // 若解析失败，尝试严格JSON
+    let parsed: any
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      const strictPrompt = `${promptText}\n\n只返回JSON对象，不要任何解释/代码块/键名。`
+      text = await aiExecutor.enqueue(() => aiExecutor.execute({ provider, prompt: strictPrompt, useSearch: false }))
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        parsed = null
+      }
+    }
+
+    // 5) 反馈（简化）
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/recommend/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decisionId: modelReco.decisionId, qualityScore: parsed ? 0.9 : 0.5, notes: 'competitor-analysis' })
+      })
+    } catch {}
+
+    if (!parsed) {
+      return {
+        sentiment: 'neutral',
+        emotion: [],
+        topics: [],
+        performanceScore: 0.5,
+        recommendations: ['请人工补充竞品分析']
+      }
+    }
+
     return {
-      sentiment: 'positive',
-      emotion: ['excitement', 'trust'],
-      topics: ['product', 'lifestyle', 'technology'],
-      performanceScore: 0.85,
-      recommendations: [
-        'Improve video quality',
-        'Add more engaging transitions',
-        'Optimize for mobile viewing'
-      ]
+      sentiment: parsed.sentiment || 'neutral',
+      emotion: Array.isArray(parsed.emotion) ? parsed.emotion : [],
+      topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+      performanceScore: typeof parsed.performanceScore === 'number' ? parsed.performanceScore : 0.7,
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : []
     }
   }
 

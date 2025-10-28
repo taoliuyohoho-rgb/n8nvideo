@@ -1,460 +1,832 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// 用户表
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
-  password  String?  // 密码哈希
-  role      String   @default("viewer") // admin, manager, operator, viewer
+  password  String?
+  role      String   @default("viewer")
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // 关联
-  videos Video[]
+  videos    Video[]
 
   @@map("users")
 }
 
-// 商品库表
 model Product {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  category    String
-  subcategory String?
-  sellingPoints String? // JSON格式存储卖点
-  skuImages   String?   // JSON格式存储SKU图片URLs
-  targetCountries String? // JSON格式存储目标国家
-  
-  // 痛点信息
-  painPoints String? // JSON格式存储痛点列表 (最多10个)
-  painPointsLastUpdate DateTime? // 痛点最后更新时间
-  painPointsSource String? // JSON格式存储痛点来源信息
-   
-  // 来源信息
-  source      String   @default("manual") // manual, user_upload, user_analysis
-  sourceUserId String? // 来源用户ID
-  isUserGenerated Boolean @default(false) // 是否用户生成
-  needsReview Boolean @default(false) // 是否需要审核
-  lastUserUpdate DateTime? // 最后用户更新时间
-   
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关联
-  templates Template[]
-  productMappings ProductMapping[]
-  painPointAnalyses ProductPainPoint[] // 保留详细分析记录
+  id                   String             @id @default(cuid())
+  name                 String             @unique
+  description          String?
+  category             String
+  subcategory          String?
+  sellingPoints        Json?
+  skuImages            String?
+  targetCountries      String?
+  targetAudience       Json?
+  source               String             @default("manual")
+  sourceUserId         String?
+  isUserGenerated      Boolean            @default(false)
+  needsReview          Boolean            @default(false)
+  lastUserUpdate       DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  painPoints           Json?
+  painPointsLastUpdate DateTime?
+  painPointsSource     String?
+  productMappings      ProductMapping[]
+  painPointAnalyses    ProductPainPoint[]
+  styles               Style[]
+  templates            Template[]
+  // 新增视频生成相关字段
+  images               String[]           @default([])
+  country              String[]           @default([])
+  targetAudiences      String[]           @default([])
+  sellingPointsTop5    String[]           @default([])
+  painPointsTop5       String[]           @default([])
+  metadata             Json?              // { source: catalog|ai|user, lastSyncedAt }
+  personas             Persona[]
+  scripts              Script[]
+  videoJobs            VideoJob[]
+  analysisCandidates   AnalysisCandidate[]
 
   @@map("products")
 }
 
-// 模板表 (基于你的Google Sheets)
-model Template {
-  id          String   @id @default(cuid())
-  templateId  String   @unique // 对应Google Sheets的TemplateID (TMP001等)
-  name        String   // TemplateName
-  description String?  // TemplatePrompt
-  productId   String   // 关联的商品ID
-  structure   String   // Structure
-  hookPool    String   // HookPool
-  videoStylePool String // VideoStylePool
-  tonePool    String   // TonePool
-  suggestedLength String // SuggestedLength
-  recommendedCategories String // RecommendedCategories
-  targetCountries String // TargetCountries
-  templatePrompt String // TemplatePrompt
-  
-  // 来源信息
-  source      String   @default("manual") // manual, user_video_analysis, user_modified
-  sourceVideoId String? // 来源视频ID（如果是用户视频解析）
-  sourceUserId String? // 来源用户ID
-  isUserGenerated Boolean @default(false) // 是否用户生成
-  needsReview Boolean @default(false) // 是否需要审核
-  
-  // AI配置
-  videoAnalysisAI String? // 视频分析AI: gemini, gpt4, claude
-  promptGenerationAI String? // Prompt生成AI: gemini, gpt4, claude
-  videoGenerationAI String? // 视频生成AI: sora, veo, doubao
-  
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model Style {
+  id                  String     @id @default(cuid())
+  name                String
+  description         String?
+  category            String
+  subcategory         String?
+  tone                String
+  scriptStructure     String?
+  visualStyle         String?
+  targetAudience      String?
+  productId           String?
+  templatePerformance Float?
+  hookPool            String?
+  targetCountries     String?
+  isActive            Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  product             Product?   @relation(fields: [productId], references: [id])
+  templates           Template[]
 
-  // 关联
-  product Product @relation(fields: [productId], references: [id])
-  videos  Video[]
-  templateAnalyses TemplateAnalysis[]
+  @@map("styles")
+}
+
+model Template {
+  id                    String             @id @default(cuid())
+  templateId            String             @unique
+  name                  String
+  description           String?
+  productId             String
+  styleId               String?
+  structure             String
+  hookPool              String
+  videoStylePool        String
+  tonePool              String
+  suggestedLength       String
+  recommendedCategories String
+  targetCountries       String
+  templatePrompt        String
+  source                String             @default("manual")
+  sourceVideoId         String?
+  sourceUserId          String?
+  isUserGenerated       Boolean            @default(false)
+  needsReview           Boolean            @default(false)
+  videoAnalysisAI       String?
+  promptGenerationAI    String?
+  videoGenerationAI     String?
+  isActive              Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  templateAnalyses      TemplateAnalysis[]
+  product               Product            @relation(fields: [productId], references: [id])
+  style                 Style?             @relation(fields: [styleId], references: [id])
+  videos                Video[]
 
   @@map("templates")
 }
 
-// 视频表
 model Video {
-  id          String   @id @default(cuid())
-  templateId  String
-  userId      String
-  
-  // 视频信息
-  videoUrl    String?  // 视频文件URL
-  videoTitle  String?  // 视频标题
-  videoDescription String? // 视频描述
-  
-  // 生成信息
-  generatedPrompt String? // 生成的prompt
-  promptGenerationAI String? // 使用的prompt生成AI
-  videoGenerationAI String? // 使用的视频生成AI
-  
-  // 状态
-  status      String   @default("generated") // generated, published, archived
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关联
-  template Template @relation(fields: [templateId], references: [id])
-  user     User     @relation(fields: [userId], references: [id])
-  adData   AdData[]
+  id                 String   @id @default(cuid())
+  templateId         String
+  userId             String
+  videoUrl           String?
+  videoTitle         String?
+  videoDescription   String?
+  generatedPrompt    String?
+  promptGenerationAI String?
+  videoGenerationAI  String?
+  status             String   @default("generated")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  adData             AdData[]
+  template           Template @relation(fields: [templateId], references: [id])
+  user               User     @relation(fields: [userId], references: [id])
 
   @@map("videos")
 }
 
-// 广告数据表
 model AdData {
-  id          String   @id @default(cuid())
-  videoId     String
-  platform    String   // tiktok, facebook, google, shopee
-  shopId      String?  // 店铺ID
-  
-  // 基础指标
-  spend       Float?   // 花费
-  impressions Int?     // 展示次数
-  clicks      Int?     // 点击次数
-  views       Int?     // 观看次数
-  ctr         Float?   // 点击率
-  ctr3s       Float?   // 3秒完播率
-  ctrComplete Float?   // 完播率
-  
-  // 转化指标
-  conversions Int?     // 转化次数
-  cvr         Float?   // 转化率
-  gmv         Float?   // GMV
-  orders      Int?     // 订单数
-  
-  // 互动指标
-  likes       Int?     // 点赞数
-  shares      Int?     // 分享数
-  comments    Int?     // 评论数
-  
-  // 用户画像
-  userDemographics String? // JSON格式存储用户画像
-  
-  // 时间维度
-  date        DateTime // 数据日期
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关联
-  video Video @relation(fields: [videoId], references: [id])
+  id               String   @id @default(cuid())
+  videoId          String
+  platform         String
+  shopId           String?
+  spend            Float?
+  impressions      Int?
+  clicks           Int?
+  views            Int?
+  ctr              Float?
+  ctr3s            Float?
+  ctrComplete      Float?
+  conversions      Int?
+  cvr              Float?
+  gmv              Float?
+  orders           Int?
+  likes            Int?
+  shares           Int?
+  comments         Int?
+  userDemographics String?
+  date             DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  video            Video    @relation(fields: [videoId], references: [id])
 
   @@map("ad_data")
 }
 
-// 模板分析表（用于AI学习优化）
 model TemplateAnalysis {
-  id        String   @id @default(cuid())
+  id         String   @id @default(cuid())
   templateId String
-  videoId   String?  // 关联的视频ID
-  analysis  String   // JSON格式存储分析结果
-  score     Float    // 模板匹配分数
-  createdAt DateTime @default(now())
-
-  // 关联
-  template Template @relation(fields: [templateId], references: [id])
+  videoId    String?
+  analysis   String
+  score      Float
+  createdAt  DateTime @default(now())
+  template   Template @relation(fields: [templateId], references: [id])
 
   @@map("template_analyses")
 }
 
-// 竞品分析表
 model CompetitorAnalysis {
-  id          String   @id @default(cuid())
-  url         String   @unique
-  platform    String   // tiktok, youtube, instagram, facebook
-  title       String?
-  description String?
-  thumbnail   String?
-  
-  // 视频信息
-  duration    Int?
-  views       Int?
-  likes       Int?
-  comments    Int?
-  shares      Int?
-  uploadDate  DateTime?
-  
-  // 内容分析
-  script      String?   // JSON格式存储脚本
-  keyPoints   String?   // JSON格式存储关键点
-  callToAction String?  // 行动号召
-  hashtags    String?   // JSON格式存储标签
-  mentions    String?   // JSON格式存储提及
-  
-  // 营销信息
-  productName String?
-  sellingPoints String? // JSON格式存储卖点
-  marketingInfo String? // JSON格式存储营销信息
-  targetAudience String? // JSON格式存储目标受众
-  price       Float?
-  currency    String?
-  discount    String?
-  
-  // 技术指标
-  videoQuality Float?
-  audioQuality Float?
-  editingStyle String?
-  colorGrading String?
-  transitions  String?   // JSON格式存储转场效果
-  
-  // AI分析结果
-  aiAnalysis  String?   // JSON格式存储AI分析结果
-  
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String    @id @default(cuid())
+  url            String    @unique
+  platform       String
+  title          String?
+  description    String?
+  thumbnail      String?
+  duration       Int?
+  views          Int?
+  likes          Int?
+  comments       Int?
+  shares         Int?
+  uploadDate     DateTime?
+  script         String?
+  keyPoints      String?
+  callToAction   String?
+  hashtags       String?
+  mentions       String?
+  productName    String?
+  sellingPoints  String?
+  marketingInfo  String?
+  targetAudience String?
+  price          Float?
+  currency       String?
+  discount       String?
+  videoQuality   Float?
+  audioQuality   Float?
+  editingStyle   String?
+  colorGrading   String?
+  transitions    String?
+  aiAnalysis     String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@map("competitor_analyses")
 }
 
-// 参考视频表
 model ReferenceVideo {
-  id          String   @id @default(cuid())
-  name        String
-  type        String   // upload, url
-  source      String   // 文件路径或URL
-  thumbnail   String?
-  
-  // 视频信息
-  duration    Int?
-  size        Int?
-  format      String?
-  
-  // 分析结果
-  analysis    String?   // JSON格式存储分析结果
-  
-  // 元数据
-  uploadedAt  DateTime @default(now())
-  uploadedBy  String
-  tags        String?   // JSON格式存储标签
-  category    String
-  description String?
-  
-  // 使用统计
-  timesUsed   Int       @default(0)
-  lastUsed    DateTime?
+  id               String    @id @default(cuid())
+  name             String
+  type             String
+  source           String
+  thumbnail        String?
+  duration         Int?
+  size             Int?
+  format           String?
+  analysis         String?
+  uploadedAt       DateTime  @default(now())
+  uploadedBy       String
+  tags             String?
+  category         String
+  description      String?
+  timesUsed        Int       @default(0)
+  lastUsed         DateTime?
   performanceScore Float?
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@map("reference_videos")
 }
 
-// 视频分析表
 model VideoAnalysis {
-  id          String   @id @default(cuid())
-  videoId     String?  // 关联的视频ID
-  referenceVideoId String? // 关联的参考视频ID
-  competitorId String? // 关联的竞品ID
-  
-  // 基础元数据
-  duration    Int
-  width       Int
-  height      Int
-  fps         Int
-  bitrate     Int
-  format      String
-  size        Int
-  
-  // 质量指标
-  resolution  String
-  clarity     Float
-  stability   Float
-  colorAccuracy Float
-  
-  // 内容分析
-  scenes      String?   // JSON格式存储场景
-  objects     String?   // JSON格式存储物体
-  text        String?   // JSON格式存储文本
-  audio       String?   // JSON格式存储音频分析
-  
-  // AI分析结果
-  aiAnalysis  String?   // JSON格式存储AI分析结果
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  videoId          String?
+  referenceVideoId String?
+  competitorId     String?
+  duration         Int
+  width            Int
+  height           Int
+  fps              Int
+  bitrate          Int
+  format           String
+  size             Int
+  resolution       String
+  clarity          Float
+  stability        Float
+  colorAccuracy    Float
+  scenes           String?
+  objects          String?
+  text             String?
+  audio            String?
+  aiAnalysis       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@map("video_analyses")
 }
 
-// 排序结果表
 model RankingResult {
-  id          String   @id @default(cuid())
-  sessionId   String   // 排序会话ID
-  algorithm   String   // coarse, fine, hybrid
-  candidates  String   // JSON格式存储候选结果
-  totalCount  Int
-  processingTime Int   // 处理时间(ms)
-  context     String?  // JSON格式存储上下文
-  userProfile String?  // JSON格式存储用户画像
-  
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  sessionId      String
+  algorithm      String
+  candidates     String
+  totalCount     Int
+  processingTime Int
+  context        String?
+  userProfile    String?
+  createdAt      DateTime @default(now())
 
   @@map("ranking_results")
 }
 
-// 商品-广告平台映射表
 model ProductMapping {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   productId         String
-  platform          String   // facebook, tiktok, google, shopee
-  platformProductId String   // 广告平台的产品ID
-  platformName      String   // 广告平台显示的产品名称
-  confidence        Float    // AI置信度 0-1
-  status            String   @default("pending") // pending, confirmed, rejected
-  suggestedBy       String   @default("ai") // ai, manual
-  createdAt         DateTime @default(now())
+  platform          String
+  platformProductId String
+  platformName      String
+  confidence        Float
+  status            String    @default("pending")
+  suggestedBy       String    @default("ai")
+  createdAt         DateTime  @default(now())
   confirmedAt       DateTime?
   confirmedBy       String?
-  
-  // 关联
-  product Product @relation(fields: [productId], references: [id])
+  product           Product   @relation(fields: [productId], references: [id])
 
   @@map("product_mappings")
 }
 
-// 产品痛点分析表
 model ProductPainPoint {
-  id          String   @id @default(cuid())
-  productId   String
-  platform    String   // shopee, tiktok, amazon, etc.
-  productUrl  String?  // 产品链接
-  productName String   // 产品名称
-  
-  // 痛点信息
-  painPoints  String   // JSON格式存储痛点列表
-  painCategories String? // JSON格式存储痛点分类
-  severity    String?  // 痛点严重程度: low, medium, high
-  frequency   Int?     // 提及频次
-  
-  // 分析结果
-  aiAnalysis String?  // JSON格式存储AI分析结果
-  keywords   String?  // JSON格式存储关键词
-  sentiment  String?  // 情感分析: positive, negative, neutral
-  
-  // 元数据
-  sourceData String?  // JSON格式存储原始数据
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  
-  // 关联
-  product Product @relation(fields: [productId], references: [id])
-  comments ProductComment[]
-  
+  id             String           @id @default(cuid())
+  productId      String
+  platform       String
+  productUrl     String?
+  productName    String
+  painPoints     String
+  painCategories String?
+  severity       String?
+  frequency      Int?
+  aiAnalysis     String?
+  keywords       String?
+  sentiment      String?
+  sourceData     String?
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  comments       ProductComment[]
+  product        Product          @relation(fields: [productId], references: [id])
+
   @@map("product_pain_points")
 }
 
-// 产品评论表
 model ProductComment {
-  id              String   @id @default(cuid())
-  painPointId     String
-  platform        String   // 评论来源平台
-  commentId       String   // 平台评论ID
-  content         String   // 评论内容
-  rating          Int?     // 评分 1-5
-  author          String?  // 评论者
-  publishDate     DateTime? // 发布时间
-  likes           Int?     // 点赞数
-  replies         Int?     // 回复数
-  
-  // 分析结果
-  sentiment       String?  // 情感分析
-  keywords        String?  // JSON格式存储关键词
-  painPointTags   String?  // JSON格式存储痛点标签
-  
-  createdAt       DateTime @default(now())
-  
-  // 关联
-  painPoint ProductPainPoint @relation(fields: [painPointId], references: [id])
-  
+  id            String           @id @default(cuid())
+  painPointId   String
+  platform      String
+  commentId     String
+  content       String
+  rating        Int?
+  author        String?
+  publishDate   DateTime?
+  likes         Int?
+  replies       Int?
+  sentiment     String?
+  keywords      String?
+  painPointTags String?
+  createdAt     DateTime         @default(now())
+  painPoint     ProductPainPoint @relation(fields: [painPointId], references: [id])
+
   @@map("product_comments")
 }
 
-// 评论爬取任务表
 model CommentScrapingTask {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   productId   String
-  platform    String   // 目标平台
-  keywords    String?  // 搜索关键词
-  status      String   @default("pending") // pending, running, completed, failed
-  progress    Int      @default(0) // 进度百分比
-  
-  // 配置
-  maxComments Int      @default(100) // 最大评论数
-  dateRange   String?  // 时间范围
-  filters     String?  // JSON格式存储过滤条件
-  
-  // 结果
-  totalFound  Int?     // 找到的评论总数
-  scraped     Int?     // 已爬取的评论数
-  errorLog    String?  // 错误日志
-  
-  createdAt   DateTime @default(now())
+  platform    String
+  keywords    String?
+  status      String    @default("pending")
+  progress    Int       @default(0)
+  maxComments Int       @default(100)
+  dateRange   String?
+  filters     String?
+  totalFound  Int?
+  scraped     Int?
+  errorLog    String?
+  createdAt   DateTime  @default(now())
   startedAt   DateTime?
   completedAt DateTime?
-  
+
   @@map("comment_scraping_tasks")
 }
 
-// 用户提交的风格和商品信息更新表
 model UserSubmission {
-  id          String   @id @default(cuid())
-  userId      String   // 提交用户ID
-  type        String   // style, product
-  targetId    String?  // 目标ID（风格或商品ID）
-  
-  // 提交内容
-  data        String   // JSON格式存储提交的数据
-  originalData String? // JSON格式存储原始数据（用于对比）
-  
-  // 来源信息
-  source      String   // video_analysis, user_modified, manual_upload
-  sourceVideoId String? // 来源视频ID
-  sourceUrl   String?  // 来源URL
-  
-  // 状态管理
-  status      String   @default("pending") // pending, approved, rejected
-  reviewedBy  String?  // 审核人ID
-  reviewedAt  DateTime? // 审核时间
-  reviewNotes String?  // 审核备注
-  
-  // 处理结果
-  isApplied   Boolean  @default(false) // 是否已应用
-  appliedAt   DateTime? // 应用时间
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(cuid())
+  userId        String
+  type          String
+  targetId      String?
+  data          String
+  originalData  String?
+  source        String
+  sourceVideoId String?
+  sourceUrl     String?
+  status        String    @default("pending")
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  reviewNotes   String?
+  isApplied     Boolean   @default(false)
+  appliedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@map("user_submissions")
+}
+
+model PromptTemplate {
+  id                 String   @id @default(cuid())
+  name               String
+  businessModule     String
+  content            String
+  variables          String?
+  description        String?
+  performance        Float?
+  usageCount         Int      @default(0)
+  successRate        Float?
+  isActive           Boolean  @default(true)
+  isDefault          Boolean  @default(false)
+  createdBy          String?
+  inputRequirements  String?  // 输入要求
+  outputRequirements String?  // 输出要求
+  outputRules        String?  // 输出规则
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([businessModule])
+  @@map("prompt_templates")
+}
+
+model EstimationModel {
+  id               String                @id @default(cuid())
+  provider         String
+  modelName        String
+  version          String?
+  langs            String
+  maxContext       Int
+  pricePer1kTokens Float
+  rateLimit        Int?
+  toolUseSupport   Boolean               @default(false)
+  jsonModeSupport  Boolean               @default(false)
+  status           String                @default("active")
+  staticCapability String?
+  dynamicMetrics   String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  candidates       EstimationCandidate[]
+
+  @@unique([provider, modelName])
+  @@index([status])
+  @@map("estimation_models")
+}
+
+model EntityIndex {
+  id          String               @id @default(cuid())
+  entityType  String
+  nativeTable String
+  nativeId    String
+  status      String               @default("active")
+  tags        String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  embeddings  EntityEmbedding[]
+  features    EntityFeature[]
+  metrics     EntityMetricsDaily[]
+
+  @@unique([entityType, nativeId])
+  @@index([entityType, status])
+  @@map("entity_index")
+}
+
+model EntityFeature {
+  id              String      @id @default(cuid())
+  entityIndexId   String
+  featureGroup    String
+  features        String
+  featuresVersion String      @default("v1")
+  validAt         DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+  entityIndex     EntityIndex @relation(fields: [entityIndexId], references: [id], onDelete: Cascade)
+
+  @@index([entityIndexId, featureGroup])
+  @@map("entity_features")
+}
+
+model EntityEmbedding {
+  id            String      @id @default(cuid())
+  entityIndexId String
+  space         String      @default("default")
+  vector        String
+  version       String      @default("v1")
+  updatedAt     DateTime    @updatedAt
+  entityIndex   EntityIndex @relation(fields: [entityIndexId], references: [id], onDelete: Cascade)
+
+  @@unique([entityIndexId, space])
+  @@map("entity_embeddings")
+}
+
+model EntityMetricsDaily {
+  id            String      @id @default(cuid())
+  entityIndexId String
+  segmentKey    String
+  qualityScore  Float?
+  editRate      Float?
+  rejectionRate Float?
+  cost          Float?
+  latency       Float?
+  sampleCount   Int         @default(0)
+  date          DateTime
+  createdAt     DateTime    @default(now())
+  entityIndex   EntityIndex @relation(fields: [entityIndexId], references: [id], onDelete: Cascade)
+
+  @@unique([entityIndexId, segmentKey, date])
+  @@index([segmentKey, date])
+  @@map("entity_metrics_daily")
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  type        String    // video_generation, competitor_analysis, etc.
+  status      String    @default("pending") // pending, running, succeeded, failed, canceled
+  priority    Int       @default(0)
+  payload     String?   // JSON string
+  result      String?   // JSON string
+  error       String?
+  progress    Int       @default(0)
+  traceId     String?
+  dedupeKey   String?   @unique
+  ownerId     String?
+  workerName  String?
+  retryCount  Int       @default(0)
+  maxRetries  Int       @default(3)
+  scheduledAt DateTime?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  metadata    String?   // JSON string
+  logs        TaskLog[]
+
+  @@index([status])
+  @@index([type])
+  @@index([priority])
+  @@index([scheduledAt])
+  @@index([ownerId])
+  @@map("tasks")
+}
+
+model TaskLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  level     String   // debug, info, warn, error
+  message   String
+  data      String?  // JSON string
+  timestamp DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([timestamp])
+  @@map("task_logs")
+}
+
+model EstimationCandidateSet {
+  id              String                @id @default(cuid())
+  taskSnapshot    String
+  contextSnapshot String?
+  createdAt       DateTime              @default(now())
+  candidates      EstimationCandidate[]
+  decisions       EstimationDecision[]
+
+  @@index([createdAt])
+  @@map("estimation_candidate_sets")
+}
+
+model EstimationCandidate {
+  id             String                 @id @default(cuid())
+  candidateSetId String
+  modelId        String
+  coarseScore    Float?
+  fineScore      Float?
+  reason         String?
+  filtered       Boolean                @default(false)
+  filterReason   String?
+  createdAt      DateTime               @default(now())
+  candidateSet   EstimationCandidateSet @relation(fields: [candidateSetId], references: [id], onDelete: Cascade)
+  model          EstimationModel        @relation(fields: [modelId], references: [id])
+
+  @@index([candidateSetId])
+  @@index([modelId])
+  @@map("estimation_candidates")
+}
+
+model EstimationDecision {
+  id              String                    @id @default(cuid())
+  candidateSetId  String
+  chosenModelId   String
+  strategyVersion String                    @default("v1")
+  weightsSnapshot String?
+  topK            Int                       @default(5)
+  exploreFlags    String?
+  expectedCost    Float?
+  expectedLatency Float?
+  requestId       String?                   @unique
+  segmentKey      String?
+  createdAt       DateTime                  @default(now())
+  candidateSet    EstimationCandidateSet    @relation(fields: [candidateSetId], references: [id], onDelete: Cascade)
+  feedbackEvents  EstimationFeedbackEvent[]
+  outcomes        EstimationOutcome?
+
+  @@index([candidateSetId])
+  @@index([chosenModelId])
+  @@index([segmentKey, createdAt])
+  @@map("estimation_decisions")
+}
+
+model EstimationOutcome {
+  id           String             @id @default(cuid())
+  decisionId   String             @unique
+  qualityScore Float?
+  editDistance Float?
+  rejected     Boolean?
+  conversion   Boolean?
+  latencyMs    Int?
+  costActual   Float?
+  tokensInput  Int?
+  tokensOutput Int?
+  autoEval     String?
+  recordedAt   DateTime           @default(now())
+  decision     EstimationDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId])
+  @@map("estimation_outcomes")
+}
+
+model EstimationFeedbackEvent {
+  id         String             @id @default(cuid())
+  decisionId String
+  eventType  String
+  payload    String
+  createdAt  DateTime           @default(now())
+  decision   EstimationDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId, eventType])
+  @@index([createdAt])
+  @@map("estimation_feedback_events")
+}
+
+model RecommendationCandidateSet {
+  id              String                    @id @default(cuid())
+  subjectType     String
+  subjectId       String?
+  subjectSnapshot String
+  targetType      String
+  contextSnapshot String?
+  createdAt       DateTime                  @default(now())
+  candidates      RecommendationCandidate[]
+  decisions       RecommendationDecision[]
+
+  @@index([createdAt])
+  @@map("reco_candidate_sets")
+}
+
+model RecommendationCandidate {
+  id             String                     @id @default(cuid())
+  candidateSetId String
+  targetType     String
+  targetId       String
+  coarseScore    Float?
+  fineScore      Float?
+  reason         String?
+  filtered       Boolean                    @default(false)
+  filterReason   String?
+  createdAt      DateTime                   @default(now())
+  candidateSet   RecommendationCandidateSet @relation(fields: [candidateSetId], references: [id], onDelete: Cascade)
+
+  @@index([candidateSetId])
+  @@index([targetType, targetId])
+  @@map("reco_candidates")
+}
+
+model RecommendationDecision {
+  id               String                     @id @default(cuid())
+  candidateSetId   String
+  chosenTargetType String
+  chosenTargetId   String
+  strategyVersion  String                     @default("v1")
+  weightsSnapshot  String?
+  topK             Int                        @default(5)
+  exploreFlags     String?
+  requestId        String?                    @unique
+  segmentKey       String?
+  createdAt        DateTime                   @default(now())
+  candidateSet     RecommendationCandidateSet @relation(fields: [candidateSetId], references: [id], onDelete: Cascade)
+  events           RecommendationEvent[]
+  outcomes         RecommendationOutcome?
+
+  @@index([candidateSetId])
+  @@index([chosenTargetType, chosenTargetId])
+  @@index([segmentKey, createdAt])
+  @@map("reco_decisions")
+}
+
+model RecommendationOutcome {
+  id           String                 @id @default(cuid())
+  decisionId   String                 @unique
+  qualityScore Float?
+  editDistance Float?
+  rejected     Boolean?
+  conversion   Boolean?
+  latencyMs    Int?
+  costActual   Float?
+  notes        String?
+  recordedAt   DateTime               @default(now())
+  decision     RecommendationDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId])
+  @@map("reco_outcomes")
+}
+
+model RecommendationEvent {
+  id         String                 @id @default(cuid())
+  decisionId String
+  eventType  String
+  payload    String?
+  createdAt  DateTime               @default(now())
+  decision   RecommendationDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId, eventType])
+  @@index([createdAt])
+  @@map("reco_events")
+}
+
+model RecommendationSetting {
+  id              String   @id @default(cuid())
+  scenario        String   @unique
+  mode            String   @default("rule")
+  mCoarse         Int      @default(10)
+  kFine           Int      @default(3)
+  epsilon         Float    @default(0.10)
+  minExplore      Float    @default(0.05)
+  diversity       Boolean  @default(true)
+  qualityFloorRej Float    @default(0.20)
+  qualityFloorStr Float    @default(0.90)
+  costOverrunMul  Float    @default(1.50)
+  latencySoftMs   Int      @default(6000)
+  latencyHardMs   Int      @default(8000)
+  segmentTemplate String   @default("")
+  updatedAt       DateTime @updatedAt
+
+  @@map("recommendation_settings")
+}
+
+model RecommendationFeedback {
+  id                String   @id @default(cuid())
+  decisionId        String
+  feedbackType      String
+  chosenCandidateId String
+  reason            String?
+  createdAt         DateTime @default(now())
+
+  @@index([decisionId])
+  @@index([feedbackType])
+  @@index([chosenCandidateId])
+  @@index([createdAt])
+  @@map("reco_feedback")
+}
+
+// 视频生成相关模型
+model Persona {
+  id            String   @id @default(cuid())
+  productId     String
+  version       Int      @default(1)
+  coreIdentity  Json     // { name, age, gender, location, occupation }
+  look          Json     // { generalAppearance, hair, clothingAesthetic, signatureDetails }
+  vibe          Json     // { traits, demeanor, communicationStyle }
+  context       Json     // { hobbies, values, frustrations, homeEnvironment }
+  why           String   // 可信度理由
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  modelUsed     Json?    // { provider, model }
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  scripts       Script[]
+
+  @@index([productId])
+  @@index([createdBy])
+  @@map("personas")
+}
+
+model Script {
+  id            String   @id @default(cuid())
+  productId     String
+  personaId     String
+  version       Int      @default(1)
+  angle         String   // 脚本角度
+  energy        String   // 能量描述
+  durationSec   Int      @default(15)
+  lines         Json     // { open, main, close }
+  shots         Json     // [second:[0..15), camera, action, visibility, audio]
+  technical     Json     // { orientation, filmingMethod, dominantHand, location, audioEnv }
+  modelUsed     Json?    // { provider, model }
+  evidenceIds   String[] @default([])
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  persona       Persona  @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  videoJobs     VideoJob[]
+
+  @@index([productId])
+  @@index([personaId])
+  @@index([createdBy])
+  @@map("scripts")
+}
+
+model VideoJob {
+  id              String   @id @default(cuid())
+  idempotencyKey  String?  @unique
+  productId       String
+  personaId       String
+  scriptId        String
+  provider        String   // OpenAI|Pika|Luma|Runway|Custom
+  model           String?
+  status          String   @default("queued") // queued|running|succeeded|failed|cancelled
+  progress        Int      @default(0)
+  errorCode       String?
+  errorMessage    String?
+  params          Json?    // { seconds, size, inputReferenceRef, extras }
+  result          Json?    // { fileUrl, thumbnailUrl, providerRaw }
+  cost            Json?    // { promptTokens, outputTokens, credits }
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  script          Script   @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@map("video_jobs")
+}
+
+model AnalysisCandidate {
+  id        String   @id @default(cuid())
+  productId String
+  content   String
+  source    String   // user|ai
+  adopted   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([source])
+  @@index([adopted])
+  @@map("analysis_candidates")
 }

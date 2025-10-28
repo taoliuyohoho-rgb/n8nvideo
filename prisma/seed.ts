@@ -185,6 +185,120 @@ async function main() {
 
   console.log('创建了', competitors.length, '个竞品分析')
 
+  // 创建示例人设（Personas）
+  const personas = await Promise.all([
+    prisma.persona.create({
+      data: {
+        productId: products[0].id, // 无线蓝牙耳机
+        version: 1,
+        coreIdentity: {
+          name: 'Sarah Chen',
+          age: 28,
+          gender: 'female',
+          location: 'San Francisco, CA - A trendy tech hub neighborhood',
+          occupation: 'UX Designer at a mid-sized startup'
+        },
+        look: {
+          generalAppearance: 'Modern, approachable professional with an artistic edge. Fit build from regular yoga and walking meetings.',
+          hair: 'Shoulder-length black hair, often in a sleek ponytail or loose waves',
+          clothingAesthetic: 'Tech-minimalist chic: neutral tones, quality basics from Everlane and Uniqlo, occasional statement jewelry',
+          signatureDetails: 'Always wearing small gold hoop earrings and a simple leather tote bag'
+        },
+        vibe: {
+          traits: ['Pragmatic', 'Creative', 'Detail-oriented', 'Thoughtful', 'Efficient', 'Slightly introverted'],
+          demeanor: 'Calm and composed, speaks deliberately, warm smile when discussing things she loves',
+          communicationStyle: 'Clear and concise, like explaining a design concept to a colleague. Uses "honestly" and "I found that..." frequently'
+        },
+        context: {
+          hobbies: 'Listening to design podcasts during commute, weekend farmers market visits, trying new coffee shops for laptop work',
+          values: 'Values quality over quantity, seeks products that simplify daily routines, believes in thoughtful design',
+          frustrations: 'Tangled wires, products that break easily, dealing with poor audio quality during video calls, wasting time on unreliable tech',
+          homeEnvironment: 'Minimalist studio apartment with plants, natural light, clean lines, organized workspace with Apple products'
+        },
+        why: 'As a UX designer who spends hours in video calls and values both form and function, her endorsement of audio products carries weight with fellow professionals seeking quality tech.',
+        createdBy: 'system',
+        modelUsed: {
+          provider: 'OpenAI',
+          model: 'gpt-4o-latest'
+        }
+      }
+    }),
+    prisma.persona.create({
+      data: {
+        productId: products[1].id, // 智能手表
+        version: 1,
+        coreIdentity: {
+          name: 'Marcus Johnson',
+          age: 34,
+          gender: 'male',
+          location: 'Austin, TX - Active lifestyle community near hiking trails',
+          occupation: 'Personal Trainer and Fitness Content Creator'
+        },
+        look: {
+          generalAppearance: 'Athletic build, energetic presence, sun-kissed complexion from outdoor workouts',
+          hair: 'Short, neat fade haircut, well-groomed beard',
+          clothingAesthetic: 'Performance athleisure: Nike, Lululemon, Under Armour. Always ready for a workout.',
+          signatureDetails: 'Visible tan lines from fitness tracker, protein shaker bottle always nearby'
+        },
+        vibe: {
+          traits: ['Motivating', 'Data-driven', 'Enthusiastic', 'Disciplined', 'Health-conscious', 'Goal-oriented', 'Approachable'],
+          demeanor: 'High energy but not overwhelming, genuinely excited about fitness tech and helping others',
+          communicationStyle: 'Talks like a friend who's passionate about helping you reach your goals. Uses phrases like "game-changer," "track your progress," "consistency is key"'
+        },
+        context: {
+          hobbies: 'Morning trail runs, meal prep Sundays, recording workout tutorials, reading about exercise science',
+          values: 'Believes in data-driven fitness, values accurate health tracking, prioritizes recovery and sleep quality',
+          frustrations: 'Inaccurate fitness data, devices that don\'t sync properly, short battery life during long workouts, complicated interfaces',
+          homeEnvironment: 'Organized home gym setup, meal prep containers lined up in fridge, charging station for all devices, fitness magazines on coffee table'
+        },
+        why: 'As a fitness professional who relies on accurate health data for both personal training and content creation, his recommendation of fitness wearables is trusted by an audience seeking reliable workout companions.',
+        createdBy: 'system',
+        modelUsed: {
+          provider: 'OpenAI',
+          model: 'gpt-4o-latest'
+        }
+      }
+    }),
+    prisma.persona.create({
+      data: {
+        productId: products[2].id, // 护肤精华液
+        version: 1,
+        coreIdentity: {
+          name: 'Emily Park',
+          age: 31,
+          gender: 'female',
+          location: 'Los Angeles, CA - Health-conscious, beauty-focused neighborhood',
+          occupation: 'Licensed Esthetician and Skincare Consultant'
+        },
+        look: {
+          generalAppearance: 'Radiant, glowing skin (her best advertisement), healthy and well-rested appearance',
+          hair: 'Long, glossy brown hair with subtle highlights, always looks nourished',
+          clothingAesthetic: 'Clean, soft feminine style: flowing fabrics, neutral colors, natural fibers. Looks effortlessly put together.',
+          signatureDetails: 'Dewy, natural makeup look, always carries a facial mist in her bag, wears SPF daily'
+        },
+        vibe: {
+          traits: ['Knowledgeable', 'Gentle', 'Patient', 'Trustworthy', 'Detail-oriented', 'Passionate about skincare'],
+          demeanor: 'Soft-spoken but confident, nurturing energy, genuinely cares about skin health over trends',
+          communicationStyle: 'Speaks like a caring expert friend who wants to share a secret. Uses phrases like "your skin will thank you," "I tell all my clients," "the key is consistency"'
+        },
+        context: {
+          hobbies: 'Reading ingredient labels for fun, trying new clean beauty products, Sunday self-care rituals, following skincare science accounts',
+          values: 'Believes in ingredient transparency, values sustainable packaging, prioritizes skin health over quick fixes, educated consumer choices',
+          frustrations: 'Misleading marketing claims, harsh ingredients, products that promise overnight miracles, wasteful packaging, overpriced items with cheap formulations',
+          homeEnvironment: 'Organized bathroom with labeled skincare routine, natural light for application, humidifier running, clean white aesthetic with plants'
+        },
+        why: 'As a licensed esthetician with professional training and daily client consultations, her recommendation of skincare products carries authority with an audience seeking expert-validated solutions for their skin concerns.',
+        createdBy: 'system',
+        modelUsed: {
+          provider: 'OpenAI',
+          model: 'gpt-4o-latest'
+        }
+      }
+    })
+  ])
+
+  console.log('创建了', personas.length, '个人设模板')
+
   console.log('种子数据完成！')
 }
 

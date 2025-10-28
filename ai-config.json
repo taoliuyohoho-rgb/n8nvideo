@@ -1,0 +1,8 @@
+{
+  "videoScriptGeneration": "auto",
+  "promptGeneration": "auto",
+  "videoRanking": "auto",
+  "competitorAnalysis": "auto",
+  "videoAnalysis": "auto",
+  "productAnalysis": "auto"
+}

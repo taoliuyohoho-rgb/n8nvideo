@@ -1,36 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import fs from 'fs'
+import path from 'path'
 
-const prisma = new PrismaClient()
+const CONFIG_FILE = path.join(process.cwd(), 'ai-config.json')
+
+function loadAIConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const data = fs.readFileSync(CONFIG_FILE, 'utf8')
+      return JSON.parse(data)
+    }
+  } catch (error) {
+    console.error('加载AI配置文件失败:', error)
+  }
+  
+  // 默认配置
+  return {
+    videoScriptGeneration: 'gemini-2.5-flash',
+    promptGeneration: 'gemini-2.5-flash',
+    videoRanking: 'gemini-2.5-flash',
+    productAnalysis: 'gemini-2.5-flash',
+    videoAnalysis: 'gemini-2.5-flash',
+    providers: {},
+    // 新增：视频生成配置（模块化，支持不同供应商）
+    videoGeneration: {
+      provider: '',
+      modelName: '',
+      baseUrl: '',
+      defaults: {
+        aspectRatio: '9:16',
+        fps: 30,
+        webhookUrl: ''
+      }
+    }
+  }
+}
+
+function saveAIConfig(config: any) {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2))
+    console.log('AI配置已保存到文件:', CONFIG_FILE)
+  } catch (error) {
+    console.error('保存AI配置文件失败:', error)
+  }
+}
+
+function getAIConfig() {
+  return loadAIConfig()
+}
+
+function setAIConfig(config: any) {
+  const currentConfig = loadAIConfig()
+  const newConfig = { ...currentConfig, ...config }
+  saveAIConfig(newConfig)
+  console.log('AI配置已更新:', newConfig)
+  return newConfig
+}
 
 // 获取AI配置
 export async function GET(request: NextRequest) {
   try {
-    // 这里应该从数据库获取配置，暂时返回默认配置
-    const defaultConfig = {
-      videoAnalysisAI: {
-        provider: 'gemini',
-        model: 'gemini-1.5-pro',
-        apiKey: '',
-        isActive: true
-      },
-      promptGenerationAI: {
-        provider: 'gemini',
-        model: 'gemini-1.5-pro',
-        apiKey: '',
-        isActive: true
-      },
-      videoGenerationAI: {
-        provider: 'sora',
-        model: 'sora-1.0',
-        apiKey: '',
-        isActive: true
-      }
-    }
-
+    // 从内存存储获取配置
+    const config = getAIConfig()
+    
     return NextResponse.json({
       success: true,
-      data: defaultConfig
+      data: config
     })
   } catch (error) {
     console.error('获取AI配置失败:', error)
@@ -46,34 +81,14 @@ export async function POST(request: NextRequest) {
   try {
     const config = await request.json()
 
-    // 验证配置格式
-    if (!config.videoAnalysisAI || !config.promptGenerationAI || !config.videoGenerationAI) {
-      return NextResponse.json(
-        { success: false, error: '配置格式不正确' },
-        { status: 400 }
-      )
-    }
-
-    // 验证API Key
-    const requiredFields = ['provider', 'model', 'apiKey', 'isActive']
-    for (const aiType of ['videoAnalysisAI', 'promptGenerationAI', 'videoGenerationAI']) {
-      for (const field of requiredFields) {
-        if (!(field in config[aiType])) {
-          return NextResponse.json(
-            { success: false, error: `${aiType} 缺少 ${field} 字段` },
-            { status: 400 }
-          )
-        }
-      }
-    }
-
-    // 这里应该将配置保存到数据库
-    // 暂时只返回成功响应
-    console.log('保存AI配置:', config)
+    // 保存配置到内存存储
+    const savedConfig = setAIConfig(config)
+    console.log('保存AI配置:', savedConfig)
 
     return NextResponse.json({
       success: true,
-      message: 'AI配置保存成功'
+      message: 'AI配置保存成功',
+      data: savedConfig
     })
   } catch (error) {
     console.error('保存AI配置失败:', error)

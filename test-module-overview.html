@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>业务模块概览测试</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // 模拟数据
+        const moduleTemplateCounts = [
+            { module: 'product-analysis', count: 5 },
+            { module: 'video-script', count: 8 },
+            { module: 'ai-reverse-engineer', count: 3 }
+        ];
+
+        const moduleConfigs = {
+            'product-analysis': {
+                name: '商品分析',
+                description: '分析商品特征、竞品对比、市场定位等',
+                icon: '📊',
+                color: 'bg-blue-50 border-blue-200',
+                inputFields: [
+                    { key: 'productName', label: '商品名称', required: true },
+                    { key: 'category', label: '商品类目', required: true },
+                    { key: 'price', label: '价格', required: false },
+                    { key: 'features', label: '商品特征', required: false },
+                    { key: 'targetAudience', label: '目标受众', required: false }
+                ],
+                outputFormat: 'JSON格式的分析报告，包含商品优势、劣势、机会、威胁等维度',
+                rules: '专业、客观、数据驱动的分析风格，提供可执行的建议'
+            },
+            'video-script': {
+                name: '视频脚本生成',
+                description: '生成短视频脚本，包含文案、镜头、音效等',
+                icon: '📝',
+                color: 'bg-green-50 border-green-200',
+                inputFields: [
+                    { key: 'productName', label: '商品名称', required: true },
+                    { key: 'style', label: '视频风格', required: true },
+                    { key: 'duration', label: '视频时长', required: false },
+                    { key: 'platform', label: '发布平台', required: false },
+                    { key: 'targetAudience', label: '目标受众', required: false }
+                ],
+                outputFormat: '结构化脚本，包含场景描述、台词、镜头指导、音效建议',
+                rules: '创意、吸引人、符合平台特点，适合目标受众观看习惯'
+            },
+            'ai-reverse-engineer': {
+                name: 'AI反推',
+                description: '根据参考实例反推生成Prompt模板',
+                icon: '🧠',
+                color: 'bg-purple-50 border-purple-200',
+                inputFields: [
+                    { key: 'referenceExample', label: '参考实例', required: true },
+                    { key: 'businessModule', label: '业务模块', required: true },
+                    { key: 'expectedOutput', label: '期望输出', required: false },
+                    { key: 'style', label: '风格偏好', required: false }
+                ],
+                outputFormat: '完整的Prompt模板，包含输入要求、输出要求、输出规则',
+                rules: '准确理解参考实例的意图，生成可复用的高质量模板'
+            }
+        };
+
+        function BusinessModuleOverview({ moduleTemplateCounts, onModuleSelect }) {
+            const getModuleCount = (module) => {
+                return moduleTemplateCounts.find(m => m.module === module)?.count || 0;
+            };
+
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {Object.entries(moduleConfigs).map(([moduleKey, config]) => {
+                        const templateCount = getModuleCount(moduleKey);
+                        
+                        return (
+                            <div key={moduleKey} className={`${config.color} border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer`}>
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xl">{config.icon}</span>
+                                        <h3 className="text-lg font-semibold">{config.name}</h3>
+                                    </div>
+                                    <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs">
+                                        {templateCount} 个模版
+                                    </span>
+                                </div>
+                                
+                                <p className="text-sm text-gray-600 mb-4">
+                                    {config.description}
+                                </p>
+                                
+                                {/* 输入字段 */}
+                                <div className="mb-4">
+                                    <h4 className="text-sm font-medium text-gray-700 mb-2">输入字段</h4>
+                                    <div className="flex flex-wrap gap-1">
+                                        {config.inputFields.map((field) => (
+                                            <span 
+                                                key={field.key} 
+                                                className={`text-xs px-2 py-1 rounded ${
+                                                    field.required ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
+                                                }`}
+                                            >
+                                                {field.label}
+                                                {field.required && <span className="ml-1">*</span>}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* 输出格式 */}
+                                <div className="mb-4">
+                                    <h4 className="text-sm font-medium text-gray-700 mb-1">输出格式</h4>
+                                    <p className="text-xs text-gray-600 leading-relaxed">
+                                        {config.outputFormat}
+                                    </p>
+                                </div>
+
+                                {/* 输出规则 */}
+                                <div className="mb-4">
+                                    <h4 className="text-sm font-medium text-gray-700 mb-1">输出规则</h4>
+                                    <p className="text-xs text-gray-600 leading-relaxed">
+                                        {config.rules}
+                                    </p>
+                                </div>
+
+                                {/* 操作按钮 */}
+                                <div className="pt-2">
+                                    <button 
+                                        className="w-full bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded text-sm hover:bg-gray-50"
+                                        onClick={() => onModuleSelect(moduleKey)}
+                                    >
+                                        查看模版 ({templateCount})
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        function App() {
+            const [selectedModule, setSelectedModule] = useState(null);
+
+            const handleModuleSelect = (module) => {
+                setSelectedModule(module);
+                alert(`选择了模块: ${module}`);
+            };
+
+            return (
+                <div className="p-8">
+                    <h1 className="text-2xl font-bold mb-6">业务模块概览测试</h1>
+                    
+                    {selectedModule ? (
+                        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded">
+                            <p>当前选择: <strong>{selectedModule}</strong></p>
+                            <button 
+                                onClick={() => setSelectedModule(null)}
+                                className="mt-2 text-blue-600 hover:text-blue-800"
+                            >
+                                返回概览
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-semibold">业务模块概览</h3>
+                                <p className="text-sm text-gray-600">点击模块卡片查看具体模版</p>
+                            </div>
+                            <BusinessModuleOverview 
+                                moduleTemplateCounts={moduleTemplateCounts}
+                                onModuleSelect={handleModuleSelect}
+                            />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LocalStorage Test</title>
+</head>
+<body>
+    <h1>LocalStorage Test</h1>
+    <div id="result"></div>
+    
+    <script>
+        // 检查localStorage中的用户数据
+        const userData = localStorage.getItem('user');
+        const resultDiv = document.getElementById('result');
+        
+        if (!userData) {
+            resultDiv.innerHTML = '<p style="color: red;">❌ 没有找到用户数据，需要登录</p>';
+            resultDiv.innerHTML += '<p>请先访问 <a href="/login">/login</a> 登录</p>';
+        } else {
+            try {
+                const user = JSON.parse(userData);
+                resultDiv.innerHTML = `
+                    <p style="color: green;">✅ 找到用户数据</p>
+                    <p>用户角色: ${user.role}</p>
+                    <p>用户名: ${user.name || '未知'}</p>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = '<p style="color: red;">❌ 用户数据格式错误</p>';
+            }
+        }
+    </script>
+</body>
+</html>

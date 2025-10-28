@@ -1,16 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
   images: {
     domains: ['localhost', 'example.com'],
   },
-  // 支持 Docker 部署
-  output: 'standalone',
-  // 环境变量配置
-  env: {
-    CUSTOM_KEY: process.env.CUSTOM_KEY,
+  // 开发服务器配置 - 绑定到localhost避免权限问题
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb',
+    },
   },
 }
 

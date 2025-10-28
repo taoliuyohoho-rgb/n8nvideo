@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { recommendRank } from '@/src/services/recommendation/recommend'
+import '@/src/services/recommendation/index'
 
 const prisma = new PrismaClient()
 
@@ -14,61 +16,42 @@ export async function POST(request: NextRequest) {
       targetAudience
     } = body
 
-    // 粗排阶段：基于基本字段匹配
-    const roughCandidates = await prisma.template.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { recommendedCategories: { contains: category } },
-          { targetCountries: { contains: targetCountry } }
-        ]
+    // 调用推荐系统进行风格匹配（product->style）
+    const recommendation = await recommendRank({
+      scenario: 'product->style',
+      task: {
+        subjectRef: { entityType: 'product', entityId: productName }, // 用产品名作标识
+        category: category,
+        contentType: 'video'
       },
-      take: 10
-    })
-
-    // 精排阶段：使用更多维度进行匹配
-    const scoredStyles = roughCandidates.map(template => {
-      let score = 0
-      
-      // 类目匹配分数
-      if (template.recommendedCategories.includes(category)) {
-        score += 30
-      }
-      
-      // 目标国家匹配分数
-      if (template.targetCountries.includes(targetCountry)) {
-        score += 25
-      }
-      
-      // 语调匹配分数（基于产品类型）
-      if (category === '电子产品' && template.tonePool.includes('professional')) {
-        score += 20
-      } else if (category === '美妆护肤' && template.tonePool.includes('elegant')) {
-        score += 20
-      } else if (category === '运动健身' && template.tonePool.includes('energetic')) {
-        score += 20
-      }
-      
-      // 目标受众匹配分数
-      if (targetAudience && template.tonePool) {
-        // 基于语调池进行匹配
-        if (template.tonePool.includes('professional') && targetAudience.includes('business')) {
-          score += 15
-        }
-        if (template.tonePool.includes('casual') && targetAudience.includes('young')) {
-          score += 15
-        }
-      }
-      
-      return {
-        ...template,
-        matchScore: score
+      context: {
+        region: targetCountry,
+        audience: targetAudience
+      },
+      constraints: {
+        maxLatencyMs: 5000
       }
     })
 
-    // 按分数排序，选择最高分的风格
-    const sortedStyles = scoredStyles.sort((a, b) => b.matchScore - a.matchScore)
-    const selectedStyle = sortedStyles[0]
+    const chosenStyleId = recommendation.chosen.id
+    const selectedStyle = await prisma.template.findUnique({ where: { id: chosenStyleId } })
+    
+    // 构建所有候选（chosen + alternatives）
+    const allCandidateIds = [
+      recommendation.chosen.id,
+      recommendation.alternatives.fineTop2?.id,
+      ...(recommendation.alternatives.coarseExtras || []).map((c: any) => c.id),
+      ...(recommendation.alternatives.outOfPool || []).map((c: any) => c.id)
+    ].filter(Boolean)
+    
+    const allCandidates = await prisma.template.findMany({
+      where: { id: { in: allCandidateIds } }
+    })
+
+    const sortedStyles = allCandidates.map(t => ({
+      ...t,
+      matchScore: t.id === chosenStyleId ? (recommendation.chosen.fineScore || 1) * 100 : 50
+    }))
 
     // 记录模板分析
     if (selectedStyle) {
@@ -79,24 +62,21 @@ export async function POST(request: NextRequest) {
             productName,
             category,
             targetCountry,
-            matchScore: selectedStyle.matchScore,
-            matchReasons: [
-              '类目匹配',
-              '目标国家匹配',
-              '语调匹配',
-              '受众匹配'
-            ]
+            decisionId: recommendation.decisionId,
+            matchScore: recommendation.chosen.fineScore || 0,
+            matchReasons: ['推荐系统选择', 'AI评分']
           }),
-          score: selectedStyle.matchScore
+          score: (recommendation.chosen.fineScore || 0) * 100
         }
       })
     }
 
     return NextResponse.json({
       success: true,
-      selectedStyle: selectedStyle,
-      allCandidates: sortedStyles.slice(0, 5), // 返回前5个候选
-      matchScore: selectedStyle?.matchScore || 0
+      selectedStyle,
+      allCandidates: sortedStyles.slice(0, 5),
+      matchScore: (recommendation.chosen.fineScore || 0) * 100,
+      decisionId: recommendation.decisionId
     })
 
   } catch (error) {

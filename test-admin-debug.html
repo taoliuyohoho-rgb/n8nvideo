@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Debug</title>
+</head>
+<body>
+    <h1>Admin Debug Page</h1>
+    <div id="status"></div>
+    <script>
+        // 检查localStorage中的用户数据
+        const userData = localStorage.getItem('user');
+        const statusDiv = document.getElementById('status');
+        
+        if (userData) {
+            try {
+                const user = JSON.parse(userData);
+                statusDiv.innerHTML = `
+                    <p>用户数据存在:</p>
+                    <pre>${JSON.stringify(user, null, 2)}</pre>
+                `;
+            } catch (e) {
+                statusDiv.innerHTML = `<p>用户数据解析失败: ${e.message}</p>`;
+            }
+        } else {
+            statusDiv.innerHTML = '<p>没有用户数据，需要登录</p>';
+        }
+        
+        // 测试API调用
+        fetch('/api/products')
+            .then(r => r.json())
+            .then(data => {
+                statusDiv.innerHTML += `<p>API测试: ${data.success ? '成功' : '失败'}</p>`;
+            })
+            .catch(e => {
+                statusDiv.innerHTML += `<p>API测试失败: ${e.message}</p>`;
+            });
+    </script>
+</body>
+</html>

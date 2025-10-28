@@ -91,7 +91,7 @@ export default function VideoAnalysisPage() {
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="upload">上传分析</TabsTrigger>
           <TabsTrigger value="url">URL分析</TabsTrigger>
-          <TabsTrigger value="competitor">竞品分析</TabsTrigger>
+          <TabsTrigger value="competitor">商品分析</TabsTrigger>
           <TabsTrigger value="reference">参考视频</TabsTrigger>
         </TabsList>
 
@@ -163,9 +163,9 @@ export default function VideoAnalysisPage() {
         <TabsContent value="competitor" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>竞品分析</CardTitle>
+              <CardTitle>商品分析</CardTitle>
               <CardDescription>
-                分析竞品视频的营销策略、内容结构和表现数据
+                分析商品相关的视频营销策略、内容结构和表现数据
               </CardDescription>
             </CardHeader>
             <CardContent>

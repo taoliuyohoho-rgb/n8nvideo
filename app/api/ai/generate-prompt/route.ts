@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { recommendRank } from '@/src/services/recommendation/recommend'
+import '@/src/services/recommendation/index'
+import { aiExecutor } from '@/src/services/ai/AiExecutor'
 
 const prisma = new PrismaClient()
 
@@ -30,15 +33,77 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 生成Sora prompt
-    const soraPrompt = generateSoraPrompt({
-      productName,
-      sellingPoints,
-      marketingInfo,
-      targetCountry,
-      targetAudience,
-      selectedTemplate
+    // 选择 Prompt 模板（task->prompt）
+    const promptReco = await recommendRank({
+      scenario: 'task->prompt',
+      task: { taskType: 'video-script', contentType: 'text' },
+      context: { region: targetCountry },
+      constraints: { maxLatencyMs: 8000 },
     })
+
+    let promptTemplateText = ''
+    try {
+      const tpl = await prisma.promptTemplate.findUnique({ where: { id: promptReco.chosen.id } })
+      if (tpl?.content) {
+        // 确保默认变量被正确设置
+        const defaultVariables = {
+          minSellingPoints: 3,
+          maxSellingPoints: 10,
+          minPainPoints: 1,
+          maxPainPoints: 5,
+          maxOther: 3
+        }
+        
+        promptTemplateText = tpl.content
+          .replace(/\{\{minSellingPoints\}\}/g, String(defaultVariables.minSellingPoints))
+          .replace(/\{\{maxSellingPoints\}\}/g, String(defaultVariables.maxSellingPoints))
+          .replace(/\{\{minPainPoints\}\}/g, String(defaultVariables.minPainPoints))
+          .replace(/\{\{maxPainPoints\}\}/g, String(defaultVariables.maxPainPoints))
+          .replace(/\{\{maxOther\}\}/g, String(defaultVariables.maxOther))
+          .replace(/\{\{productName\}\}/g, productName || '')
+          .replace(/\{\{category\}\}/g, selectedTemplate?.recommendedCategories || '')
+          .replace(/\{\{sellingPoints\}\}/g, Array.isArray(sellingPoints) ? sellingPoints.slice(0, 5).join(', ') : (sellingPoints || ''))
+          .replace(/\{\{targetAudience\}\}/g, targetAudience || '')
+          .replace(/\{\{targetCountry\}\}|\{\{country\}\}/g, targetCountry || '')
+      }
+    } catch {}
+
+    if (!promptTemplateText) {
+      promptTemplateText = generateSoraPrompt({
+        productName,
+        sellingPoints,
+        marketingInfo,
+        targetCountry,
+        targetAudience,
+        selectedTemplate
+      })
+    }
+
+    // 选择模型（task->model）
+    const modelReco = await recommendRank({
+      scenario: 'task->model',
+      task: { taskType: 'script-generation', contentType: 'text', jsonRequirement: false },
+      context: { region: targetCountry },
+      constraints: { maxLatencyMs: 8000 },
+    })
+
+    // 执行生成脚本文案（埋点 execute_*）
+    const provider = 'gemini' // 文本生成，可优先Gemini，后续映射模型provider
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/recommend/feedback`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decisionId: modelReco.decisionId, eventType: 'execute_start', payload: { chosenId: modelReco?.chosen?.id, targetType: 'model' } })
+      })
+    } catch {}
+    const startTs = Date.now()
+    const soraPrompt = await aiExecutor.enqueue(() => aiExecutor.execute({ provider, prompt: promptTemplateText, useSearch: false }))
+    const latencyMs = Date.now() - startTs
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/recommend/feedback`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decisionId: modelReco.decisionId, eventType: 'execute_complete', payload: { chosenId: modelReco?.chosen?.id, latencyMs, success: true }, latencyMs })
+      })
+    } catch {}
 
     // 保存视频生成记录
     const video = await prisma.video.create({
@@ -46,7 +111,7 @@ export async function POST(request: NextRequest) {
         templateId: selectedStyleId || 'default-template',
         userId: 'demo-user', // 实际应用中从认证获取
         generatedPrompt: soraPrompt,
-        promptGenerationAI: selectedTemplate.promptGenerationAI || 'gemini',
+        promptGenerationAI: modelReco.chosen.title || 'gemini',
         videoGenerationAI: selectedTemplate.videoGenerationAI || 'sora',
         status: 'generated'
       }

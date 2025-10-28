@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>类目测试</title>
+</head>
+<body>
+    <h1>风格库类目测试</h1>
+    <div id="result"></div>
+    
+    <script>
+        // 测试API
+        fetch('http://localhost:3002/api/styles')
+            .then(res => res.json())
+            .then(data => {
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML = `
+                    <h2>API返回的类目:</h2>
+                    <pre>${JSON.stringify(data.data.categories, null, 2)}</pre>
+                    <h2>风格数量: ${data.data.styles.length}</h2>
+                `;
+            })
+            .catch(err => {
+                document.getElementById('result').innerHTML = `<p style="color: red;">错误: ${err}</p>`;
+            });
+    </script>
+</body>
+</html>
+

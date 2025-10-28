@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Setup Admin User</title>
+</head>
+<body>
+    <h1>设置管理员用户</h1>
+    <button onclick="setupAdmin()">设置为管理员用户</button>
+    <div id="result"></div>
+    
+    <script>
+        function setupAdmin() {
+            const adminUser = {
+                id: 'admin-001',
+                name: '管理员',
+                email: 'admin@example.com',
+                role: 'admin'
+            };
+            
+            localStorage.setItem('user', JSON.stringify(adminUser));
+            
+            document.getElementById('result').innerHTML = `
+                <p style="color: green;">✅ 管理员用户已设置</p>
+                <p>现在可以访问 <a href="/admin">/admin</a> 页面了</p>
+            `;
+        }
+    </script>
+</body>
+</html>

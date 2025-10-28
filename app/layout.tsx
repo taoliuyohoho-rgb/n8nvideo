@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+// Avoid network fetch for Google Fonts in server build; fallback to system font
 import './globals.css'
+import { Toaster } from 'sonner'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = { className: 'font-sans' } as any
 
 export const metadata: Metadata = {
   title: 'AI Video Generator - 跨境电商视频生成工具',
@@ -20,6 +21,7 @@ export default function RootLayout({
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
           {children}
         </div>
+        <Toaster />
       </body>
     </html>
   )

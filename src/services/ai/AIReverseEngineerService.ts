@@ -1,0 +1,349 @@
+/**
+ * AI反推服务
+ * 
+ * 根据参考实例生成符合业务模块要求的三段式Prompt结构
+ */
+
+import { PrismaClient } from '@prisma/client';
+import { recommendRank } from '../recommendation/recommend';
+import { AiExecutor } from './AiExecutor';
+import { logger } from '../logger/Logger';
+
+const prisma = new PrismaClient();
+
+export interface ReverseEngineerInput {
+  referenceExample: string | File;
+  businessModule: string;
+  exampleType: 'selling-points' | 'pain-points' | 'target-audience' | 'prompt-script' | 'video';
+}
+
+export interface ReverseEngineerOutput {
+  success: boolean;
+  data: {
+    inputRequirements: string;
+    outputRequirements: string;
+    outputRules: string;
+    suggestedTemplate: {
+      name: string;
+      content: string;
+      businessModule: string;
+    };
+  };
+  error?: string;
+}
+
+export interface BusinessModuleRequirements {
+  inputRequirements: string;
+  outputRequirements: string;
+  outputRules: string;
+}
+
+export class AIReverseEngineerService {
+  private aiExecutor: AiExecutor;
+
+  constructor() {
+    this.aiExecutor = new AiExecutor();
+  }
+
+  /**
+   * 分析参考实例并推荐模型和Prompt
+   */
+  async analyzeReferenceAndRecommend(params: {
+    referenceExample: string | File;
+    businessModule: string;
+    exampleType: 'selling-points' | 'pain-points' | 'target-audience' | 'prompt-script' | 'video';
+  }): Promise<{
+    modelCandidates: Array<{
+      id: string;
+      title: string;
+      score: number;
+      reason: string;
+      type: 'fine-top' | 'coarse-top' | 'explore';
+    }>;
+    promptCandidates: Array<{
+      id: string;
+      name: string;
+      score: number;
+      reason: string;
+      type: 'fine-top' | 'coarse-top' | 'explore';
+    }>;
+  }> {
+    const { referenceExample, businessModule, exampleType } = params;
+
+    // 检测输入类型
+    const inputType = this.detectInputType(referenceExample);
+
+    // 推荐AI模型
+    const modelRecommendation = await recommendRank({
+      scenario: 'task->model',
+      task: {
+        taskType: 'ai-reverse-engineer',
+        contentType: inputType,
+        jsonRequirement: true,
+        inputType,
+        exampleType
+      },
+      context: {
+        region: 'zh',
+        budgetTier: 'mid'
+      },
+      constraints: {
+        requireJsonMode: true,
+        maxLatencyMs: 30000
+      }
+    });
+
+    // 推荐Prompt模板
+    const promptRecommendation = await recommendRank({
+      scenario: 'task->prompt',
+      task: {
+        taskType: 'ai-reverse-engineer',
+        contentType: inputType,
+        inputType,
+        exampleType
+      },
+      context: {
+        region: 'zh',
+        budgetTier: 'mid'
+      },
+      constraints: {
+        maxLatencyMs: 10000
+      }
+    });
+
+    return {
+      modelCandidates: modelRecommendation.topK.map(c => ({
+        id: c.id,
+        title: c.title || 'Unknown Model',
+        score: c.fineScore || c.coarseScore || 0,
+        reason: String(c.reason?.explanation || ''),
+        type: (c.type || 'fine-top') as 'explore' | 'fine-top' | 'coarse-top'
+      })),
+      promptCandidates: promptRecommendation.topK.map(c => ({
+        id: c.id,
+        name: c.title || 'Unknown Prompt',
+        score: c.fineScore || c.coarseScore || 0,
+        reason: String(c.reason?.explanation || ''),
+        type: (c.type || 'fine-top') as 'explore' | 'fine-top' | 'coarse-top'
+      }))
+    };
+  }
+
+  /**
+   * 生成Prompt模板草稿
+   */
+  async generatePromptDraft(params: {
+    referenceExample: string | File;
+    businessModule: string;
+    chosenModelId: string;
+    chosenPromptId: string;
+  }): Promise<{
+    inputRequirements: string;
+    outputRequirements: string;
+    outputRules: string;
+    suggestedTemplate: {
+      name: string;
+      content: string;
+      businessModule: string;
+    };
+  }> {
+    const { referenceExample, businessModule, chosenModelId, chosenPromptId } = params;
+
+    try {
+      // 获取业务模块要求
+      const requirements = this.getBusinessModuleRequirements(businessModule);
+
+      // 获取选择的模型和Prompt
+      const [model, prompt] = await Promise.all([
+        prisma.estimationModel.findUnique({ where: { id: chosenModelId } }),
+        prisma.promptTemplate.findUnique({ where: { id: chosenPromptId } })
+      ]);
+
+      if (!model || !prompt) {
+        throw new Error('模型或Prompt模板不存在');
+      }
+
+      // 构建反推Prompt
+      const reversePrompt = this.buildReversePrompt(referenceExample, businessModule, requirements);
+
+      // 调用AI生成三段式结构
+      const response = await this.aiExecutor.callWithSchema(
+        model.provider as any,
+        model.modelName,
+        reversePrompt,
+        {
+          type: 'object',
+          properties: {
+            inputRequirements: { type: 'string' },
+            outputRequirements: { type: 'string' },
+            outputRules: { type: 'string' },
+            suggestedTemplate: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                content: { type: 'string' }
+              },
+              required: ['name', 'content']
+            }
+          },
+          required: ['inputRequirements', 'outputRequirements', 'outputRules', 'suggestedTemplate']
+        }
+      );
+
+      return {
+        inputRequirements: response.inputRequirements,
+        outputRequirements: response.outputRequirements,
+        outputRules: response.outputRules,
+        suggestedTemplate: {
+          name: response.suggestedTemplate.name,
+          content: response.suggestedTemplate.content,
+          businessModule
+        }
+      };
+
+    } catch (error: any) {
+      logger.error('AI反推生成失败', { businessModule, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * 保存Prompt模板到业务模块库
+   */
+  async savePromptTemplate(
+    draft: {
+      inputRequirements: string;
+      outputRequirements: string;
+      outputRules: string;
+      suggestedTemplate: {
+        name: string;
+        content: string;
+        businessModule: string;
+      };
+    },
+    businessModule: string
+  ): Promise<{
+    id: string;
+    name: string;
+    businessModule: string;
+  }> {
+    try {
+      const template = await prisma.promptTemplate.create({
+        data: {
+          name: draft.suggestedTemplate.name,
+          businessModule,
+          content: draft.suggestedTemplate.content,
+          inputRequirements: draft.inputRequirements,
+          outputRequirements: draft.outputRequirements,
+          outputRules: draft.outputRules,
+          variables: JSON.stringify([]),
+          description: `AI反推生成的模板 - ${businessModule}`,
+          performance: 0.8,
+          successRate: 0.8,
+          isActive: true,
+          isDefault: false,
+          createdBy: 'ai-reverse-engineer'
+        }
+      });
+
+      return {
+        id: template.id,
+        name: template.name,
+        businessModule: template.businessModule
+      };
+
+    } catch (error: any) {
+      logger.error('保存Prompt模板失败', { businessModule, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * 检测输入类型
+   */
+  private detectInputType(referenceExample: string | File): 'text' | 'image' | 'video' {
+    if (referenceExample instanceof File) {
+      const type = referenceExample.type;
+      if (type.startsWith('image/')) return 'image';
+      if (type.startsWith('video/')) return 'video';
+      return 'text';
+    }
+    return 'text';
+  }
+
+  /**
+   * 根据业务模块获取输入输出要求
+   */
+  private getBusinessModuleRequirements(businessModule: string): BusinessModuleRequirements {
+    const requirements: Record<string, BusinessModuleRequirements> = {
+      'product-analysis': {
+        inputRequirements: '商品名称、类目、描述、目标市场、竞品内容（可选）',
+        outputRequirements: 'JSON格式，卖点/痛点各8-12字最多5个，目标受众8-12字',
+        outputRules: '作为商品分析专家，重点关注用户痛点和产品优势，输出简洁明了'
+      },
+      'video-script': {
+        inputRequirements: '商品名称、卖点、目标受众、视频时长、风格偏好（可选）',
+        outputRequirements: 'JSON格式，包含hook、主体内容、CTA，每部分字数限制',
+        outputRules: '作为视频脚本专家，注重吸引力和转化效果'
+      },
+      'ai-reverse-engineer': {
+        inputRequirements: '参考实例、目标业务模块、实例类型',
+        outputRequirements: 'JSON格式，包含inputRequirements、outputRequirements、outputRules',
+        outputRules: '作为Prompt工程专家，根据参考实例生成符合目标业务模块要求的三段式Prompt结构'
+      }
+    };
+
+    return requirements[businessModule] || requirements['product-analysis'];
+  }
+
+  /**
+   * 构建反推Prompt
+   */
+  private buildReversePrompt(
+    referenceExample: string | File,
+    businessModule: string,
+    requirements: BusinessModuleRequirements
+  ): string {
+    const exampleContent = referenceExample instanceof File 
+      ? `[文件: ${referenceExample.name}]` 
+      : referenceExample;
+
+    return `你是一个专业的Prompt工程专家。请根据以下参考实例，为"${businessModule}"业务模块生成三段式Prompt结构。
+
+**参考实例：**
+${exampleContent}
+
+**目标业务模块：** ${businessModule}
+
+**业务模块要求：**
+- 输入要求：${requirements.inputRequirements}
+- 输出要求：${requirements.outputRequirements}
+- 输出规则：${requirements.outputRules}
+
+**任务：**
+请分析参考实例的特点和风格，生成符合目标业务模块要求的三段式Prompt结构：
+
+1. **输入要求**：定义需要的输入变量和占位符
+2. **输出要求**：定义输出格式和约束条件
+3. **输出规则**：定义AI的角色定位和内容风格，尽量保持与参考实例相似的风格
+
+**要求：**
+- 输入要求必须与目标业务模块的规范一致
+- 输出要求必须符合目标业务模块的格式要求
+- 输出规则要体现参考实例的风格特点
+- 生成的Prompt模板要实用且易于使用
+
+请以JSON格式返回结果：
+{
+  "inputRequirements": "具体的输入要求描述",
+  "outputRequirements": "具体的输出要求描述", 
+  "outputRules": "具体的输出规则描述",
+  "suggestedTemplate": {
+    "name": "建议的模板名称",
+    "content": "完整的Prompt模板内容"
+  }
+}`;
+  }
+}
+
+export const aiReverseEngineerService = new AIReverseEngineerService();

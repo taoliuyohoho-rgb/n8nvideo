@@ -117,10 +117,10 @@ export class ConfigFactory {
   static createFromEnv(): AppConfig {
     return {
       database: {
-        url: process.env.DATABASE_URL || 'postgresql://localhost:5432/app'
+        url: process.env.DATABASE_URL || 'file:./dev.db'
       },
       redis: {
-        url: process.env.REDIS_URL || 'redis://localhost:6379'
+        url: process.env.REDIS_URL || ''
       },
       ai: {
         provider: process.env.AI_PROVIDER || 'gemini',
@@ -153,10 +153,10 @@ export class ConfigFactory {
   static createDefault(): AppConfig {
     return {
       database: {
-        url: 'postgresql://localhost:5432/app'
+        url: 'file:./dev.db'
       },
       redis: {
-        url: 'redis://localhost:6379'
+        url: ''
       },
       ai: {
         provider: 'gemini',

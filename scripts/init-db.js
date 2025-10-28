@@ -32,13 +32,13 @@ async function initDatabase() {
       update: {},
       create: {
         id: 'default-product',
-        name: '无线蓝牙耳机',
-        description: '高品质无线蓝牙耳机，支持降噪功能',
-        category: '电子产品',
-        subcategory: '音频设备',
-        sellingPoints: JSON.stringify(['降噪技术', '长续航', '舒适佩戴']),
-        skuImages: JSON.stringify(['https://example.com/headphone1.jpg']),
-        targetCountries: JSON.stringify(['US', 'UK', 'DE'])
+        name: '电磁炉',
+        description: '高效加热，多功能烹饪，智能触控',
+        category: '家居用品',
+        subcategory: '厨房电器',
+        sellingPoints: JSON.stringify(['新人-5RM', '限时7折', '高效节能', '安全可靠', '易清洁']),
+        skuImages: JSON.stringify(['https://example.com/induction_cooker.jpg']),
+        targetCountries: JSON.stringify(['MY', 'SG', 'TH'])
       }
     })
     console.log(`✅ 商品创建成功: ${product.name}`)
@@ -50,17 +50,17 @@ async function initDatabase() {
       update: {},
       create: {
         templateId: 'TMP001',
-        name: '电子产品展示模板',
-        description: '适用于电子产品的专业展示模板',
+        name: '电磁炉产品展示模板',
+        description: '适用于电磁炉的专业展示模板',
         productId: product.id,
         structure: '开场吸引 -> 产品展示 -> 功能演示 -> 品牌强化',
         hookPool: '问题式开场, 数据震撼, 场景代入',
         videoStylePool: '专业拍摄, 多角度展示, 细节特写',
         tonePool: '专业, 可信, 现代',
         suggestedLength: '15-30秒',
-        recommendedCategories: '电子产品, 数码配件',
-        targetCountries: 'US, UK, DE, FR',
-        templatePrompt: 'Create a professional product showcase video...',
+        recommendedCategories: '家居用品, 厨房电器',
+        targetCountries: 'MY, SG, TH, ID',
+        templatePrompt: 'Create a professional product showcase video for induction cooker, highlighting its efficiency, safety features, and ease of use. Include marketing message: 新人-5RM；限时7折',
         videoAnalysisAI: 'gemini',
         promptGenerationAI: 'gemini',
         videoGenerationAI: 'sora'
@@ -74,9 +74,9 @@ async function initDatabase() {
       data: {
         templateId: template.id,
         userId: user.id,
-        videoTitle: '无线蓝牙耳机展示视频',
-        videoDescription: '展示无线蓝牙耳机的核心功能和卖点',
-        generatedPrompt: 'Create a professional product video for wireless bluetooth headphones...',
+        videoTitle: '电磁炉产品展示视频',
+        videoDescription: '展示电磁炉的核心功能和卖点，包含新人-5RM；限时7折营销信息',
+        generatedPrompt: 'Create a professional product video for induction cooker, highlighting its efficiency, safety features, and ease of use. Include marketing message: 新人-5RM；限时7折. Key selling points: 高效节能, 安全可靠, 易清洁. Target audience: 家庭主妇, 烹饪爱好者.',
         promptGenerationAI: 'gemini',
         videoGenerationAI: 'sora',
         status: 'generated'
@@ -106,9 +106,9 @@ async function initDatabase() {
         shares: 30,
         comments: 45,
         userDemographics: JSON.stringify({
-          age: '25-35',
+          age: '25-45',
           gender: 'mixed',
-          interests: ['technology', 'music']
+          interests: ['cooking', 'home_improvement', 'kitchen_appliances']
         }),
         date: new Date()
       }

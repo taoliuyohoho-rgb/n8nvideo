@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Key修复测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        input, select { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>API Key修复测试</h1>
+    
+    <div class="test">
+        <h3>测试API Key获取</h3>
+        <select id="aiServiceSelect" onchange="updateSelectedService()">
+            <option value="">请选择AI服务</option>
+            <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
+            <option value="gemini">Gemini</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="doubao">豆包</option>
+        </select>
+        
+        <input 
+            type="password" 
+            id="apiKeyInput" 
+            placeholder="输入API密钥"
+            data-testid="api-key-input"
+        />
+        
+        <button onclick="testApiKeyVerification()">验证API Key</button>
+        <button onclick="checkInputs()">检查输入值</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        function updateSelectedService() {
+            const select = document.getElementById('aiServiceSelect');
+            window.selectedAIService = select.value;
+            console.log('选择的服务:', window.selectedAIService);
+        }
+
+        function testApiKeyVerification() {
+            const selectedService = window.selectedAIService;
+            const apiKeyInput = document.querySelector('[data-testid="api-key-input"]');
+            
+            if (!selectedService) {
+                document.getElementById('result').innerHTML = 
+                    '<div class="error">❌ 请先选择AI服务类型</div>';
+                return;
+            }
+            
+            if (!apiKeyInput || !apiKeyInput.value) {
+                document.getElementById('result').innerHTML = 
+                    '<div class="error">❌ 请先输入API Key</div>';
+                return;
+            }
+            
+            document.getElementById('result').innerHTML = 
+                `<div class="success">✅ 准备验证 ${selectedService} API Key: ${apiKeyInput.value.substring(0, 8)}...</div>`;
+        }
+
+        function checkInputs() {
+            const selectedService = window.selectedAIService;
+            const apiKeyInput = document.querySelector('[data-testid="api-key-input"]');
+            
+            document.getElementById('result').innerHTML = 
+                `<div>
+                    选择的服务: ${selectedService || '未选择'}<br>
+                    API Key: ${apiKeyInput ? (apiKeyInput.value ? '已输入' : '未输入') : '未找到输入框'}
+                </div>`;
+        }
+    </script>
+</body>
+</html>

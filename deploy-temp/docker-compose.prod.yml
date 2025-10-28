@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  n8nvideo:
+    build:
+      context: .
+      dockerfile: Dockerfile.ultra-minimal
+    image: n8nvideo:latest
+    container_name: n8nvideo
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # 数据库配置 - 需要根据实际情况修改
+      - DATABASE_URL=file:./dev.db
+      # AI服务配置 - 需要根据实际情况修改
+      - OPENAI_API_KEY=your_openai_api_key_here
+      - GOOGLE_API_KEY=your_google_api_key_here
+    volumes:
+      # 持久化数据库
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - n8nvideo-network
+
+networks:
+  n8nvideo-network:
+    driver: bridge
