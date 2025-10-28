@@ -82,10 +82,25 @@ async function handler(request: NextRequest, traceId: string) {
     }
 
     // 3. 解析现有数据
-    const sellingPoints = product.sellingPoints ? JSON.parse(product.sellingPoints as string) : []
-    const painPoints = product.painPoints ? JSON.parse(product.painPoints as string) : []
-    const targetCountries = product.targetCountries ? JSON.parse(product.targetCountries as string) : []
-    const targetAudiences = product.targetAudience ? JSON.parse(product.targetAudience as string) : []
+    // sellingPoints, painPoints, targetAudience 是 Json 类型，Prisma 已自动反序列化
+    // 只有 targetCountries 是 String 类型，需要手动解析
+    const sellingPoints = Array.isArray(product.sellingPoints) 
+      ? product.sellingPoints 
+      : (product.sellingPoints ? (typeof product.sellingPoints === 'string' ? JSON.parse(product.sellingPoints) : []) : [])
+    
+    const painPoints = Array.isArray(product.painPoints) 
+      ? product.painPoints 
+      : (product.painPoints ? (typeof product.painPoints === 'string' ? JSON.parse(product.painPoints) : []) : [])
+    
+    const targetCountries = product.targetCountries 
+      ? (typeof product.targetCountries === 'string' && product.targetCountries.startsWith('[') 
+          ? JSON.parse(product.targetCountries) 
+          : (typeof product.targetCountries === 'string' ? product.targetCountries.split(',').map(c => c.trim()) : []))
+      : []
+    
+    const targetAudiences = Array.isArray(product.targetAudience) 
+      ? product.targetAudience 
+      : (product.targetAudience ? (typeof product.targetAudience === 'string' ? JSON.parse(product.targetAudience) : []) : [])
 
     // 4. 应用Top5规则引擎
     const top5Result = await extractTop5(sellingPoints, painPoints)
