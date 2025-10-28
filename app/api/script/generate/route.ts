@@ -229,8 +229,8 @@ async function handler(request: NextRequest, traceId: string) {
       success: true,
       scripts: [script], // 目前只生成一个变体
       modelUsed: {
-        provider: modelRecommendation.chosen.provider,
-        model: modelRecommendation.chosen.model,
+        modelId: modelRecommendation.chosen.id,
+        promptId: promptRecommendation.chosen.id,
         promptTemplate: promptTemplate.name
       }
     })

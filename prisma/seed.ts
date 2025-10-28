@@ -243,7 +243,7 @@ async function main() {
         vibe: {
           traits: ['Motivating', 'Data-driven', 'Enthusiastic', 'Disciplined', 'Health-conscious', 'Goal-oriented', 'Approachable'],
           demeanor: 'High energy but not overwhelming, genuinely excited about fitness tech and helping others',
-          communicationStyle: 'Talks like a friend who's passionate about helping you reach your goals. Uses phrases like "game-changer," "track your progress," "consistency is key"'
+          communicationStyle: 'Talks like a friend who is passionate about helping you reach your goals. Uses phrases like "game-changer," "track your progress," "consistency is key"'
         },
         context: {
           hobbies: 'Morning trail runs, meal prep Sundays, recording workout tutorials, reading about exercise science',

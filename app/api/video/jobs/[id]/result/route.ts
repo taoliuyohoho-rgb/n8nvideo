@@ -9,11 +9,11 @@ const prisma = new PrismaClient()
  * 视频任务结果下载 API
  * 获取视频生成结果，支持直接下载或返回文件URL
  */
-async function handler(request: NextRequest, traceId: string, { params }: { params: { id: string } }) {
+async function handler(request: NextRequest, traceId: string, context?: any) {
   const log = createApiLogger(traceId, 'video-jobs-result')
 
   try {
-    const jobId = params.id
+    const jobId = context?.params?.id
 
     if (!jobId) {
       log.warn('Missing jobId')
@@ -113,4 +113,6 @@ async function handler(request: NextRequest, traceId: string, { params }: { para
   }
 }
 
-export const GET = withTraceId(handler)
+export async function GET(request: NextRequest, context: { params: { id: string } }) {
+  return withTraceId((req: NextRequest, traceId: string) => handler(req, traceId, context))(request)
+}
