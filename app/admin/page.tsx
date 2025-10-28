@@ -19,6 +19,7 @@ import { AIReverseEngineer } from '@/components/AIReverseEngineer'
 import { BusinessModuleOverview } from '@/components/BusinessModuleOverview'
 import { UserManagement } from './features/users/UserManagement'
 import { PersonaManagement } from './features/personas/PersonaManagement'
+import { TaskManagement } from './features/tasks/TaskManagement'
 
 interface Product {
   id: string
@@ -2082,63 +2083,8 @@ export default function AdminPage() {
             </TabsContent>
 
             {/* 监控页签：包含 任务监控 / 预估模型监控 / 预估模型测试 */}
-            <TabsContent value="tasks" className="space-y-6">
-              {/* 任务监控 */}
-              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-semibold">任务监控</h2>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => window.open('/admin/tasks', '_blank')}>
-                    在新窗口打开
-                  </Button>
-                </div>
-              </div>
-              <div className="border rounded-lg overflow-hidden" style={{ height: '60vh' }}>
-                <iframe
-                  src="/admin/tasks"
-                  style={{ width: '100%', height: '100%' }}
-                  title="任务监控"
-                />
-              </div>
-
-              {/* 预估模型监控 */}
-              <div className="flex justify-between items-center pt-2">
-                <h2 className="text-2xl font-semibold">预估模型监控</h2>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => window.open('/admin/estimation-monitor', '_blank')}>
-                    在新窗口打开
-                  </Button>
-                </div>
-              </div>
-              <div className="border rounded-lg overflow-hidden" style={{ height: '60vh' }}>
-                <iframe
-                  src="/admin/estimation-monitor"
-                  style={{ width: '100%', height: '100%' }}
-                  title="预估模型监控"
-                />
-              </div>
-
-              {/* 预估模型测试 */}
-              <div className="flex justify-between items-center pt-2">
-                <h2 className="text-2xl font-semibold">预估模型测试</h2>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => window.open('/admin/estimation-test', '_blank')}>
-                    在新窗口打开
-                  </Button>
-                </div>
-              </div>
-              <div className="border rounded-lg overflow-hidden" style={{ height: '60vh' }}>
-                <iframe
-                  src="/admin/estimation-test"
-                  style={{ width: '100%', height: '100%' }}
-                  title="预估模型测试"
-                />
-              </div>
-
-              {/* 推荐系统监控 */}
-              <div className="flex justify-between items-center pt-2">
-                <h2 className="text-2xl font-semibold">推荐系统监控</h2>
-              </div>
-              <RecommendationMonitor />
+            <TabsContent value="tasks">
+              <TaskManagement RecommendationMonitorComponent={RecommendationMonitor} />
             </TabsContent>
 
             <TabsContent value="personas">
