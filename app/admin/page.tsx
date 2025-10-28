@@ -20,18 +20,8 @@ import { BusinessModuleOverview } from '@/components/BusinessModuleOverview'
 import { UserManagement } from './features/users/UserManagement'
 import { PersonaManagement } from './features/personas/PersonaManagement'
 import { TaskManagement } from './features/tasks/TaskManagement'
-
-interface Product {
-  id: string
-  name: string
-  description: string
-  category: string
-  subcategory: string
-  sellingPoints: string[]
-  skuImages: string[]
-  targetCountries: string[]
-  createdAt: string
-}
+import { ProductManagement } from './features/products/ProductManagement'
+import type { Product } from './shared/types/product'
 
 interface Style {
   id: string
@@ -1889,197 +1879,48 @@ export default function AdminPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="products" className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-semibold">商品库管理</h2>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    onClick={async () => {
-                      console.log('🔄 手动刷新商品数据...')
-                      try {
-                        await loadProducts()
-                        // 强制重新渲染
-                        setProducts(prev => [...prev])
-                        console.log('✅ 商品数据已刷新，当前商品数:', products.length)
-                        alert(`刷新成功！\n当前共有 ${products.length} 个商品`)
-                      } catch (error) {
-                        console.error('刷新失败:', error)
-                        alert('刷新失败，请重试')
-                      }
-                    }}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    刷新
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowBulkUpload(true)}>
-                    <Upload className="h-4 w-4 mr-2" />
-                    批量上传
-                  </Button>
-                  <Button onClick={() => setShowProductForm(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    添加商品
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      if (selectedProducts.length === 0) {
-                        alert('请先选择商品')
-                        return
-                      }
-                      setShowScrapingModal(true)
-                    }}
-                    disabled={selectedProducts.length === 0}
-                  >
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    商品分析 {selectedProducts.length > 0 && `(${selectedProducts.length})`}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="border rounded-lg">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left">
-                        <input
-                          type="checkbox"
-                          checked={selectedProducts.length === products.length && products.length > 0}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedProducts(products.map(p => p.id))
-                            } else {
-                              setSelectedProducts([])
-                            }
-                          }}
-                          className="rounded border-gray-300"
-                        />
-                      </th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">商品名称</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">类目</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">卖点</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">痛点</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">目标国家</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">目标受众</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {products.map((product) => (
-                      <tr key={product.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedProducts.includes(product.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedProducts([...selectedProducts, product.id])
-                              } else {
-                                setSelectedProducts(selectedProducts.filter(id => id !== product.id))
-                              }
-                            }}
-                            className="rounded border-gray-300"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div>
-                            <div className="font-medium text-gray-900">{product.name}</div>
-                            <div className="text-sm text-gray-500">{product.description}</div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-1">
-                            <Badge variant="outline" className="text-xs">{product.category}</Badge>
-                            {product.subcategory && (
-                              <Badge variant="secondary" className="text-xs">{product.subcategory}</Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-sm text-gray-600">
-                            {Array.isArray(product.sellingPoints) && product.sellingPoints.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {product.sellingPoints.slice(0, 3).map((sp: string, index: number) => (
-                                  <Badge key={index} variant="outline" className="text-xs" title={sp}>
-                                    {sp.length > 10 ? sp.substring(0, 10) + '...' : sp}
-                                  </Badge>
-                                ))}
-                                {product.sellingPoints.length > 3 && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    +{product.sellingPoints.length - 3}
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              '未设置'
-                            )}
-                          </div>
-                        </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-600">
-                          {Array.isArray((product as any).painPoints) && (product as any).painPoints.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {(product as any).painPoints.slice(0, 3).map((point: any, index: number) => {
-                                const pointText = typeof point === 'string' ? point : (point.text || point.painPoint || JSON.stringify(point))
-                                return (
-                                  <Badge key={index} variant="outline" className="text-xs" title={pointText}>
-                                    {pointText.length > 10 ? pointText.substring(0, 10) + '...' : pointText}
-                                  </Badge>
-                                )
-                              })}
-                              {(product as any).painPoints.length > 3 && (
-                                <Badge variant="secondary" className="text-xs">
-                                  +{(product as any).painPoints.length - 3}
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            '未设置'
-                          )}
-                        </div>
-                      </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {product.targetCountries.map((country) => (
-                              <Badge key={country} variant="outline" className="text-xs">{country}</Badge>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="text-sm text-gray-600">
-                            {Array.isArray((product as any).targetAudience) && (product as any).targetAudience.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {(product as any).targetAudience.slice(0, 3).map((audience: string, index: number) => (
-                                  <Badge key={index} variant="outline" className="text-xs" title={audience}>
-                                    {audience.length > 10 ? audience.substring(0, 10) + '...' : audience}
-                                  </Badge>
-                                ))}
-                                {(product as any).targetAudience.length > 3 && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    +{(product as any).targetAudience.length - 3}
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              '未设置'
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleEditProduct(product)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDeleteProduct(product.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <TabsContent value="products">
+              <ProductManagement
+                products={products}
+                selectedProducts={selectedProducts}
+                onSelectProduct={(productId, selected) => {
+                  if (selected) {
+                    setSelectedProducts([...selectedProducts, productId])
+                  } else {
+                    setSelectedProducts(selectedProducts.filter(id => id !== productId))
+                  }
+                }}
+                onSelectAll={(selected) => {
+                  if (selected) {
+                    setSelectedProducts(products.map(p => p.id))
+                  } else {
+                    setSelectedProducts([])
+                  }
+                }}
+                onRefresh={async () => {
+                  console.log('🔄 手动刷新商品数据...')
+                  try {
+                    await loadProducts()
+                    setProducts(prev => [...prev])
+                    console.log('✅ 商品数据已刷新，当前商品数:', products.length)
+                    alert(`刷新成功！\n当前共有 ${products.length} 个商品`)
+                  } catch (error) {
+                    console.error('刷新失败:', error)
+                    alert('刷新失败，请重试')
+                  }
+                }}
+                onBulkUpload={() => setShowBulkUpload(true)}
+                onAdd={() => setShowProductForm(true)}
+                onAnalyze={() => {
+                  if (selectedProducts.length === 0) {
+                    alert('请先选择商品')
+                    return
+                  }
+                  setShowScrapingModal(true)
+                }}
+                onEdit={handleEditProduct}
+                onDelete={handleDeleteProduct}
+              />
             </TabsContent>
 
             {/* 监控页签：包含 任务监控 / 预估模型监控 / 预估模型测试 */}
