@@ -1,0 +1,17 @@
+/**
+ * 用户相关类型定义
+ */
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: string
+  isActive: boolean
+  createdAt: string
+  password?: string
+  _count: {
+    videos: number
+  }
+}
+
