@@ -36,9 +36,9 @@ export function PersonaManagement({
             <RefreshCw className="h-4 w-4 mr-2" />
             刷新数据
           </Button>
-          <Button onClick={onAdd}>
+          <Button onClick={onAdd} disabled variant="secondary">
             <Plus className="h-4 w-4 mr-2" />
-            添加人设
+            添加人设（表单开发中）
           </Button>
         </div>
       </div>
@@ -106,7 +106,7 @@ export function PersonaManagement({
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => onEdit(persona)}>
+                    <Button size="sm" variant="outline" onClick={() => onEdit(persona)} disabled title="表单开发中">
                       <Edit className="h-4 w-4" />
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => onDelete(persona.id)}>
