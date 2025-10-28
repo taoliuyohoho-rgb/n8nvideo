@@ -179,6 +179,7 @@ export async function POST(request: NextRequest) {
           subcategory: true,
           sellingPoints: true,
           targetCountries: true,
+          targetAudience: true,
           painPoints: true
         }
       })
