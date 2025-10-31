@@ -36,7 +36,7 @@ async function processProductCompetitorAnalysis(
       maxConcurrency: 3,
       timeoutMs: 30000,
       allowFallback: false
-    },
+    } as any,
     customPrompt,
     context: {
       productName: String(product.name || ''),
