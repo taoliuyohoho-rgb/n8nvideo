@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { callModel } from '@/src/services/ai/contract'
+import { callModelLegacy as callModel } from '@/src/services/ai/rules'
 import { recommendRank } from '@/src/services/recommendation/recommend'
 
 /**
@@ -123,7 +123,7 @@ ${personaDescription}
 可选类目列表（按商品数量排序）：
 ${categoriesWithCount.map((c, i) => `${i + 1}. ${c.name} (${c.id}) - 含${c.productCount}个商品${c.description ? `\n   描述: ${c.description}` : ''}`).join('\n')}
 
-请分析这个人设最可能购买哪些类目的商品，选择3-5个最相关的类目。
+请选择3-5个最相关的类目。
 考虑因素：
 1. 人设的职业、年龄、收入水平
 2. 生活方式和使用场景
@@ -142,26 +142,22 @@ ${categoriesWithCount.map((c, i) => `${i + 1}. ${c.name} (${c.id}) - 含${c.prod
   ]
 }`
 
-    const categoryResult = await callModel({
-      model: selectedModelId,
-      messages: [{ role: 'user', content: categoryPrompt }],
-      options: {
-        temperature: 0.3,
-        response_format: { type: 'json_object' }
-      }
-    })
+    // 改为使用 callModelLegacy(prompt, needs, policy)
+    const categoryRaw = await callModel(
+      categoryPrompt,
+      { vision: false, search: false },
+      { allowFallback: true, model: selectedModelId || 'auto', requireJsonMode: true }
+    )
 
     let matchedCategories: Array<{ categoryId: string, categoryName: string, reason: string, matchScore: number }> = []
     try {
-      const parsed = JSON.parse(categoryResult.content)
+      const parsed = JSON.parse(categoryRaw)
       matchedCategories = parsed.categories || []
     } catch (err) {
       console.error('解析AI返回的类目失败:', err)
-      // 回退到简单的关键词匹配
       return fallbackMatching(personaName, description, categoriesWithCount, products)
     }
 
-    // 基于匹配的类目，推荐商品
     const matchedCategoryIds = matchedCategories.map(c => c.categoryId)
     const relevantProducts = products.filter(p => 
       p.categoryId && matchedCategoryIds.includes(p.categoryId)
@@ -178,7 +174,6 @@ ${categoriesWithCount.map((c, i) => `${i + 1}. ${c.name} (${c.id}) - 含${c.prod
       })
     }
 
-    // 使用推荐的模型推荐商品（限制在前30个，避免token过多）
     const productPrompt = `你是一个电商商品推荐专家。根据以下人设信息，从给定的商品列表中选择最匹配的商品。
 
 人设信息：
@@ -208,22 +203,18 @@ ${relevantProducts.slice(0, 30).map((p, i) =>
   ]
 }`
 
-    const productResult = await callModel({
-      model: selectedModelId,
-      messages: [{ role: 'user', content: productPrompt }],
-      options: {
-        temperature: 0.3,
-        response_format: { type: 'json_object' }
-      }
-    })
+    const productRaw = await callModel(
+      productPrompt,
+      { vision: false, search: false },
+      { allowFallback: true, model: selectedModelId || 'auto', requireJsonMode: true }
+    )
 
     let matchedProducts: Array<{ productId: string, productName: string, reason: string, matchScore: number }> = []
     try {
-      const parsed = JSON.parse(productResult.content)
+      const parsed = JSON.parse(productRaw)
       matchedProducts = parsed.products || []
     } catch (err) {
       console.error('解析AI返回的商品失败:', err)
-      // 如果解析失败，随机选择一些商品
       matchedProducts = relevantProducts.slice(0, 5).map(p => ({
         productId: p.id,
         productName: p.name,

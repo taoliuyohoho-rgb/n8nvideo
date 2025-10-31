@@ -121,60 +121,19 @@ export async function POST(request: NextRequest) {
     // 解析AI返回的内容
     let generatedContent: PersonaContent
     try {
-      console.log('开始解析AI响应...')
-      console.log('AI响应内容:', aiResponse.substring(0, 500) + '...')
-      
-      // 尝试解析JSON
       const jsonMatch = aiResponse?.match(/\{[\s\S]*\}/)
-      console.log('JSON匹配结果:', jsonMatch ? '找到JSON' : '未找到JSON')
+      let parsed: any = null
       if (jsonMatch) {
-        console.log('解析JSON:', jsonMatch[0].substring(0, 200) + '...')
-        const parsed = JSON.parse(jsonMatch[0])
-        console.log('JSON解析成功，内容:', Object.keys(parsed))
-        
-        // 转换AI返回的格式到期望的格式
-        if (parsed.coreIdentity) {
-          generatedContent = {
-            basicInfo: {
-              age: parsed.coreIdentity.age?.toString() || '25-35',
-              gender: parsed.coreIdentity.gender || '不限',
-              occupation: parsed.coreIdentity.occupation || '专业人士',
-              income: '中等收入',
-              location: parsed.coreIdentity.location || '城市'
-            },
-            behavior: {
-              purchaseHabits: '注重品质和性价比',
-              usageScenarios: '日常使用',
-              decisionFactors: '品质、价格、品牌',
-              brandPreference: '注重口碑和评价'
-            },
-            preferences: {
-              priceSensitivity: '中等',
-              featureNeeds: ['品质', '功能', '设计'],
-              qualityExpectations: '高品质',
-              serviceExpectations: '专业服务'
-            },
-            psychology: {
-              values: parsed.context?.values ? [parsed.context.values] : ['品质', '效率', '创新'],
-              lifestyle: '现代都市生活',
-              painPoints: parsed.context?.frustrations ? [parsed.context.frustrations] : ['时间紧张', '品质要求高'],
-              motivations: ['提升生活品质', '追求效率']
-            }
-          }
-          console.log('转换成功，使用AI生成的内容')
-        } else {
-          throw new Error('AI返回的JSON格式不正确')
-        }
-      } else {
-        console.log('无法解析JSON，使用默认结构')
-        // 如果无法解析JSON，使用默认结构
+        parsed = JSON.parse(jsonMatch[0])
+      }
+      if (parsed?.coreIdentity) {
         generatedContent = {
           basicInfo: {
-            age: '25-35',
-            gender: '不限',
-            occupation: '专业人士',
+            age: parsed.coreIdentity.age?.toString() || '25-35',
+            gender: parsed.coreIdentity.gender || '不限',
+            occupation: parsed.coreIdentity.occupation || '专业人士',
             income: '中等收入',
-            location: '城市'
+            location: parsed.coreIdentity.location || '城市'
           },
           behavior: {
             purchaseHabits: '注重品质和性价比',
@@ -189,141 +148,70 @@ export async function POST(request: NextRequest) {
             serviceExpectations: '专业服务'
           },
           psychology: {
-            values: ['品质', '效率', '创新'],
+            values: parsed.context?.values ? [parsed.context.values] : ['品质', '效率', '创新'],
             lifestyle: '现代都市生活',
-            painPoints: ['时间紧张', '品质要求高'],
+            painPoints: parsed.context?.frustrations ? [parsed.context.frustrations] : ['时间紧张', '品质要求高'],
             motivations: ['提升生活品质', '追求效率']
           }
+        }
+      } else {
+        // 默认结构
+        generatedContent = {
+          basicInfo: { age: '25-35', gender: '不限', occupation: '专业人士', income: '中等收入', location: '城市' },
+          behavior: { purchaseHabits: '注重品质和性价比', usageScenarios: '日常使用', decisionFactors: '品质、价格、品牌', brandPreference: '注重口碑和评价' },
+          preferences: { priceSensitivity: '中等', featureNeeds: ['品质', '功能', '设计'], qualityExpectations: '高品质', serviceExpectations: '专业服务' },
+          psychology: { values: ['品质', '效率', '创新'], lifestyle: '现代都市生活', painPoints: ['时间紧张', '品质要求高'], motivations: ['提升生活品质', '追求效率'] }
         }
       }
     } catch (parseError) {
       console.error('解析AI响应失败:', parseError)
-      // 使用默认结构
       generatedContent = {
-        basicInfo: {
-          age: '25-35',
-          gender: '不限',
-          occupation: '专业人士',
-          income: '中等收入',
-          location: '城市'
-        },
-        behavior: {
-          purchaseHabits: '注重品质和性价比',
-          usageScenarios: '日常使用',
-          decisionFactors: '品质、价格、品牌',
-          brandPreference: '注重口碑和评价'
-        },
-        preferences: {
-          priceSensitivity: '中等',
-          featureNeeds: ['品质', '功能', '设计'],
-          qualityExpectations: '高品质',
-          serviceExpectations: '专业服务'
-        },
-        psychology: {
-          values: ['品质', '效率', '创新'],
-          lifestyle: '现代都市生活',
-          painPoints: ['时间紧张', '品质要求高'],
-          motivations: ['提升生活品质', '追求效率']
-        }
+        basicInfo: { age: '25-35', gender: '不限', occupation: '专业人士', income: '中等收入', location: '城市' },
+        behavior: { purchaseHabits: '注重品质和性价比', usageScenarios: '日常使用', decisionFactors: '品质、价格、品牌', brandPreference: '注重口碑和评价' },
+        preferences: { priceSensitivity: '中等', featureNeeds: ['品质', '功能', '设计'], qualityExpectations: '高品质', serviceExpectations: '专业服务' },
+        psychology: { values: ['品质', '效率', '创新'], lifestyle: '现代都市生活', painPoints: ['时间紧张', '品质要求高'], motivations: ['提升生活品质', '追求效率'] }
       }
     }
 
     // 🆕 保存人设到数据库
     try {
-      console.log('开始保存人设到数据库...')
-      
-      // 从AI生成的内容中提取人设信息
+      // 解析出AI结构（可选）
       const jsonMatch = aiResponse?.match(/\{[\s\S]*\}/)
       let parsedAI: any = {}
-      
       if (jsonMatch) {
-        try {
-          parsedAI = JSON.parse(jsonMatch[0])
-        } catch (e) {
-          console.warn('无法解析AI响应为JSON:', e)
-        }
+        try { parsedAI = JSON.parse(jsonMatch[0]) } catch {}
       }
-      
-      // 构建数据库人设对象
-      const personaData = {
+
+      // 构建数据库人设对象（使用 UncheckedCreateInput 字段）
+      const personaData: any = {
         productId: productId || null,
-        categoryId: effectiveCategoryId,
+        categoryId: effectiveCategoryId || 'default-category',
         name: parsedAI.coreIdentity?.name || `${category?.name || '用户'}人设${variantIndex > 0 ? variantIndex : ''}`,
-        coreIdentity: parsedAI.coreIdentity || {
-          name: parsedAI.coreIdentity?.name || generatedContent.basicInfo?.occupation || '用户',
-          age: typeof generatedContent.basicInfo?.age === 'string' ? 
-            parseInt(generatedContent.basicInfo.age.split('-')[0]) : 25,
-          gender: generatedContent.basicInfo?.gender || '不限',
-          location: generatedContent.basicInfo?.location || '城市',
-          occupation: generatedContent.basicInfo?.occupation || '专业人士'
-        },
-        look: parsedAI.look || {
-          generalAppearance: '现代都市',
-          hair: '整洁',
-          clothingAesthetic: '商务休闲',
-          signatureDetails: '简约时尚'
-        },
-        vibe: parsedAI.vibe || {
-          traits: generatedContent.psychology?.values || ['专业', '效率'],
-          demeanor: '亲和',
-          communicationStyle: '清晰直接'
-        },
-        context: parsedAI.context || {
-          hobbies: generatedContent.preferences?.featureNeeds?.join('、') || '品质生活',
-          values: generatedContent.psychology?.values?.join('、') || '品质、效率',
-          frustrations: generatedContent.psychology?.painPoints?.join('、') || '时间紧张',
-          homeEnvironment: '现代简约'
-        },
+        description: textDescription || null,
         generatedContent: generatedContent,
+        aiModel: aiModel || 'gemini-pro',
+        promptTemplate: promptTemplate || 'default-template',
+        why: parsedAI?.why || 'auto-generated',
+        version: 1,
+        isActive: true,
+        // 兼容旧字段
+        coreIdentity: parsedAI.coreIdentity || null,
+        look: parsedAI.look || null,
+        vibe: parsedAI.vibe || null,
+        context: parsedAI.context || null,
       }
-      
+
       const savedPersona = await prisma.persona.create({
         data: personaData,
         include: {
-          product: {
-            select: { id: true, name: true, category: true, subcategory: true }
-          }
+          product: { select: { id: true, name: true, category: true, subcategory: true } }
         }
       })
-      
-      console.log('✅ 人设保存成功:', savedPersona.id)
-      
-      return NextResponse.json({
-        success: true,
-        data: {
-          persona: savedPersona // 返回完整的数据库对象
-        }
-      })
+
+      return NextResponse.json({ success: true, data: { persona: savedPersona } })
     } catch (saveError) {
       console.error('❌ 保存人设失败:', saveError)
-      
-      // 即使保存失败，也返回生成的内容（但标记未保存）
-      return NextResponse.json({
-        success: true,
-        data: {
-          persona: {
-            coreIdentity: {
-              name: generatedContent.basicInfo?.occupation || '用户',
-              age: typeof generatedContent.basicInfo?.age === 'string' ? 
-                parseInt(generatedContent.basicInfo.age.split('-')[0]) : 25,
-              gender: generatedContent.basicInfo?.gender || '不限',
-              location: generatedContent.basicInfo?.location || '城市',
-              occupation: generatedContent.basicInfo?.occupation || '专业人士'
-            },
-            look: {},
-            vibe: {
-              communicationStyle: '清晰直接'
-            },
-            context: {
-              hobbies: '品质生活',
-              values: '品质、效率'
-            },
-            generatedContent,
-            _unsaved: true // 标记未保存
-          }
-        },
-        warning: '人设生成成功但保存失败'
-      })
+      return NextResponse.json({ success: false, error: '人设保存失败' }, { status: 500 })
     }
 
   } catch (error) {

@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
         createdBy: 'system', // TODO: 从认证信息中获取
         // 多对多关系
         personaCategories: {
-          create: finalCategoryIds.map((catId, index) => ({
+          create: finalCategoryIds.map((catId: string, index: number) => ({
             categoryId: catId,
             isPrimary: index === 0 // 第一个为主类目
           }))
