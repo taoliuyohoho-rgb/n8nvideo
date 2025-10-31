@@ -475,7 +475,7 @@ export async function POST(request: NextRequest) {
         policy: {
           timeoutMs: 30000,
           allowFallback: false
-        },
+        } as any,
         customPrompt: undefined,
         context: {
           productName: '',
@@ -505,7 +505,7 @@ export async function POST(request: NextRequest) {
                 maxConcurrency: 3,
                 timeoutMs: 30000,
                 allowFallback: false
-              },
+              } as any,
               customPrompt: undefined,
               context: {
                 productName: '',
@@ -563,11 +563,9 @@ export async function GET(request: NextRequest) {
             },
             needs: {
               vision: false,
-              search: false,
-              streaming: false
-            },
+              search: false
+            } as any,
             policy: {
-              maxConcurrency: 3,
               timeoutMs: 30000,
               allowFallback: false
             },
@@ -591,12 +589,12 @@ export async function GET(request: NextRequest) {
     const comparison = {
       totalCompetitors: results.length,
       commonSellingPoints: findCommonElements(
-        results.map((r: { combinedInsights?: { sellingPoints?: string[] } }) => r.combinedInsights?.sellingPoints || [])
+        results.map((r: any) => r?.combinedInsights?.sellingPoints || [])
       ),
       commonPainPoints: findCommonElements(
-        results.map((r: { combinedInsights?: { painPoints?: string[] } }) => r.combinedInsights?.painPoints || [])
+        results.map((r: any) => r?.combinedInsights?.painPoints || [])
       ),
-      averageConfidence: results.reduce((sum: number, r: { confidence?: number }) => sum + (r.confidence || 0), 0) / results.length
+      averageConfidence: results.reduce((sum: number, r: any) => sum + (r?.confidence || 0), 0) / (results.length || 1)
     }
 
     return NextResponse.json({
