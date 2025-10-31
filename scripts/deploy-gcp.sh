@@ -41,15 +41,18 @@ if [ -z "$DB_EXISTS" ]; then
   echo "   ⚠️  注意：这会创建一个新的数据库实例，可能需要几分钟"
   
   # 创建 Cloud SQL 实例（最小配置，降低成本）
+  # PostgreSQL 不支持 bin-log（只有 MySQL 支持）
+  DB_PASSWORD=$(openssl rand -base64 16)
+  echo "   数据库密码已生成（请保存）：${DB_PASSWORD}"
+  
   gcloud sql instances create ${DB_INSTANCE_NAME} \
     --database-version=POSTGRES_15 \
     --tier=db-f1-micro \
     --region=${REGION} \
-    --root-password=$(openssl rand -base64 16) \
+    --root-password=${DB_PASSWORD} \
     --storage-type=SSD \
     --storage-size=10GB \
     --backup-start-time=03:00 \
-    --enable-bin-log \
     --project=${PROJECT_ID} || {
     echo "   ❌ 创建数据库实例失败"
     echo "   💡 提示：如果配额不足，请手动在 Cloud Console 创建或使用现有数据库"

@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
         provider: 'gemini', 
         prompt, 
         useSearch: false,
-        jsonMode: true
+        jsonMode: true as any
       })
     )
 
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
               provider: 'gemini', 
               prompt: optimizedPrompt, 
               useSearch: false,
-              jsonMode: true
+              jsonMode: true as any
             })
           )
 
