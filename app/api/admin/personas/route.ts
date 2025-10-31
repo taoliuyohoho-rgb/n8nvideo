@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
       }
 
       console.log('调用AI:', { provider, modelName, aiModel, promptLength: prompt.length })
-      const aiResponse = await aiExecutor.execute({ provider, prompt, useSearch: false })
+      const aiResponse = await aiExecutor.execute({ provider: provider as any, prompt, useSearch: false })
       console.log('AI响应长度:', aiResponse.length)
 
       // 解析AI返回
