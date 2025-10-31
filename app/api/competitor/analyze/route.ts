@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         policy: {
           timeoutMs: 30000,
           allowFallback: allowFallback || false
-        },
+        } as any,
         customPrompt,
         context: {
           productName: product.name,
