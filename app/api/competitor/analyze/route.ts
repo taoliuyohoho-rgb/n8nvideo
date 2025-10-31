@@ -498,9 +498,8 @@ export async function POST(request: NextRequest) {
               },
               needs: {
                 vision: false,
-                search: false,
-                streaming: false
-              },
+                search: false
+              } as any,
               policy: {
                 maxConcurrency: 3,
                 timeoutMs: 30000,
