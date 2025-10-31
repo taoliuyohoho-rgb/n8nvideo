@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         maxConcurrency: 3,
         timeoutMs: 30000,
         allowFallback: false
-      },
+      } as any,
       customPrompt: undefined,
       context: {
         productName: product.name,
