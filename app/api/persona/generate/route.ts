@@ -275,11 +275,6 @@ export async function POST(request: NextRequest) {
           homeEnvironment: '现代简约'
         },
         generatedContent: generatedContent,
-          aiModel: aiModel,
-          promptTemplate: promptTemplate,
-          variantIndex: variantIndex,
-          generatedAt: new Date().toISOString()
-        })
       }
       
       const savedPersona = await prisma.persona.create({

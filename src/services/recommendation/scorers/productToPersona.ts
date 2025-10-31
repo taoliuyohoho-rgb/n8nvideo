@@ -276,8 +276,8 @@ async function rankPersonas(req: RecommendRankRequest) {
   }
 
   // 3. 粗排
-  const coarseScored = passedHard.map((欲望) => ({
-    persona: p as unknown as PersonaWithProductSelect体内,
+  const coarseScored = passedHard.map((p) => ({
+    persona: p as unknown as PersonaWithProductSelect,
     score: computeCoarseScore(p as unknown as PersonaWithProductSelect, req),
   }));
 
