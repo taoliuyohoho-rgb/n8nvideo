@@ -9,11 +9,56 @@ import { poolCache } from '../cache';
 import type { Scorer } from '../registry';
 import type { RecommendRankRequest, CandidateItem } from '../types';
 import { DEFAULT_M_COARSE, DEFAULT_K_FINE } from '../constants';
+import type { Persona, Product, Prisma } from '@prisma/client';
+
+// 定义 Persona 与 Product 关联的类型（使用 Prisma 的 include 结果类型）
+type PersonaWithProductSelect = {
+  id: string;
+  name: string;
+  description: string | null;
+  productId: string | null;
+  categoryId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  coreIdentity: Prisma.JsonValue | null;
+  generatedContent: Prisma.JsonValue;
+  product: {
+    id: string;
+    name: string;
+    category: string;
+    subcategory: string | null;
+  } | null;
+};
+
+// JSON 字段的类型定义
+interface GeneratedContent {
+  targetCountries?: string[];
+  basicInfo?: {
+    location?: string;
+  };
+}
+
+interface CoreIdentity {
+  location?: string;
+}
+
+// 类型守卫函数
+function isGeneratedContent(value: unknown): value is GeneratedContent {
+  return typeof value === 'object' && value !== null;
+}
+
+function isCoreIdentity(value: unknown): value is CoreIdentity {
+  return typeof value === 'object' && value !== null;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
 
 /**
  * 硬约束：必须满足的条件
  */
-function applyHardConstraints(persona: Record<string, unknown>, req: RecommendRankRequest): boolean {
+function applyHardConstraints(persona: PersonaWithProductSelect, req: RecommendRankRequest): boolean {
   // 1. 如果指定了商品ID，优先匹配相同商品的人设
   if (req.task.subjectRef?.entityId) {
     // 不在这里过滤，让所有人设都参与评分
@@ -22,13 +67,28 @@ function applyHardConstraints(persona: Record<string, unknown>, req: RecommendRa
   // 2. 如果指定了目标市场，检查人设的目标市场/地点是否匹配（国家级）
   if (req.context?.region) {
     const desired = String(req.context.region);
-    const explicit = (persona as Record<string, unknown>).targetCountry as string | undefined;
-    const gc = (persona as Record<string, unknown>).generatedContent as any;
-    const gcFirst = Array.isArray(gc?.targetCountries) ? gc.targetCountries[0] : undefined;
-    const coreLoc = (persona as Record<string, unknown>).coreIdentity?.location as string | undefined;
-    const genLoc = gc?.basicInfo?.location as string | undefined;
+    
+    // 安全访问 generatedContent
+    const gc = persona.generatedContent;
+    const generatedContent = isGeneratedContent(gc) ? gc : null;
+    const gcFirst = Array.isArray(generatedContent?.targetCountries) 
+      ? generatedContent.targetCountries[0] 
+      : undefined;
+    
+    // 安全访问 coreIdentity
+    const coreIdentity = persona.coreIdentity;
+    const coreId = isCoreIdentity(coreIdentity) ? coreIdentity : null;
+    const coreLoc = isString(coreId?.location) ? coreId.location : undefined;
+    
+    // 安全访问 generatedContent.basicInfo.location
+    const genLoc = isString(generatedContent?.basicInfo?.location) 
+      ? generatedContent.basicInfo.location 
+      : undefined;
 
-    const personaCountry = explicit || gcFirst || inferCountryFromLocation(coreLoc) || inferCountryFromLocation(genLoc);
+    const personaCountry = 
+      gcFirst || 
+      inferCountryFromLocation(coreLoc) || 
+      inferCountryFromLocation(genLoc);
 
     if (personaCountry && !isCountryMatch(personaCountry, desired) && !isCountryMatch(personaCountry, 'global')) {
       return false;
@@ -41,11 +101,13 @@ function applyHardConstraints(persona: Record<string, unknown>, req: RecommendRa
 /**
  * 粗排评分：基于静态特征快速筛选
  */
-function computeCoarseScore(persona: Record<string, unknown>, req: RecommendRankRequest): number {
+function computeCoarseScore(persona: PersonaWithProductSelect, req: RecommendRankRequest): number {
   let score = 0;
   const productId = req.task.subjectRef?.entityId;
   const category = req.task.category;
-  const subcategory = (req.task as Record<string, unknown>).subcategory;
+  const subcategory = 'subcategory' in req.task && typeof req.task.subcategory === 'string'
+    ? req.task.subcategory
+    : undefined;
 
   // 1. 商品ID完全匹配（最高优先级，+50分）
   if (productId && persona.productId === productId) {
@@ -54,7 +116,9 @@ function computeCoarseScore(persona: Record<string, unknown>, req: RecommendRank
 
   // 2. 商品名称匹配（+50分，与productId同等优先级）
   if (productId && persona.product?.name) {
-    const productName = (req.task as Record<string, unknown>).productName;
+    const productName = 'productName' in req.task && typeof req.task.productName === 'string'
+      ? req.task.productName
+      : undefined;
     if (productName && persona.product.name === productName) {
       score += 50;
     }
@@ -66,10 +130,10 @@ function computeCoarseScore(persona: Record<string, unknown>, req: RecommendRank
   }
 
   // 4. 类目匹配（+25分）
-  if (category) {
-    if (persona.product?.category === category) {
+  if (category && persona.product?.category) {
+    if (persona.product.category === category) {
       score += 25;
-    } else if (persona.product?.category && category.includes(persona.product.category)) {
+    } else if (category.includes(persona.product.category)) {
       score += 15; // 部分匹配
     }
   }
@@ -77,25 +141,29 @@ function computeCoarseScore(persona: Record<string, unknown>, req: RecommendRank
   // 5. 目标市场匹配（+15分，按国家归一化匹配）
   if (req.context?.region) {
     const desired = String(req.context.region);
-    const explicit = (persona as Record<string, unknown>).targetCountry as string | undefined;
-    const gc = (persona as Record<string, unknown>).generatedContent as any;
-    const gcFirst = Array.isArray(gc?.targetCountries) ? gc.targetCountries[0] : undefined;
-    const coreLoc = (persona as Record<string, unknown>).coreIdentity?.location as string | undefined;
-    const genLoc = gc?.basicInfo?.location as string | undefined;
-    const personaCountry = explicit || gcFirst || inferCountryFromLocation(coreLoc) || inferCountryFromLocation(genLoc);
+    const gc = persona.generatedContent;
+    const generatedContent = isGeneratedContent(gc) ? gc : null;
+    const gcFirst = Array.isArray(generatedContent?.targetCountries)
+      ? generatedContent.targetCountries[0]
+      : undefined;
+    const coreIdentity = persona.coreIdentity;
+    const coreId = isCoreIdentity(coreIdentity) ? coreIdentity : null;
+    const coreLoc = isString(coreId?.location) ? coreId.location : undefined;
+    const genLoc = isString(generatedContent?.basicInfo?.location)
+      ? generatedContent.basicInfo.location
+      : undefined;
+    const personaCountry = gcFirst || inferCountryFromLocation(coreLoc) || inferCountryFromLocation(genLoc);
     if (personaCountry && isCountryMatch(personaCountry, desired)) {
       score += 15;
     }
   }
 
-  // 6. 渠道匹配（+10分）
-  if (req.context?.channel && persona.channel === req.context.channel) {
-    score += 10;
-  }
-
   // 7. 人设活跃度（基于创建时间，越新越好，0-10分）
   if (persona.createdAt) {
-    const daysSinceCreation = (Date.now() - new Date(persona.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+    const createdAtDate = persona.createdAt instanceof Date
+      ? persona.createdAt
+      : new Date(persona.createdAt);
+    const daysSinceCreation = (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24);
     const freshnessScore = Math.max(0, 10 - daysSinceCreation / 30); // 每30天衰减1分
     score += freshnessScore;
   }
@@ -106,7 +174,7 @@ function computeCoarseScore(persona: Record<string, unknown>, req: RecommendRank
 /**
  * 精排评分：基于历史效果数据精细排序
  */
-function computeFineScore(persona: Record<string, unknown>, req: RecommendRankRequest, coarseScore: number): number {
+function computeFineScore(persona: PersonaWithProductSelect, req: RecommendRankRequest, coarseScore: number): number {
   let score = coarseScore;
 
   // TODO: 从 outcome 表获取历史效果数据
@@ -135,10 +203,14 @@ async function rankPersonas(req: RecommendRankRequest) {
   // 1. 从数据库获取所有候选人设
   const productId = req.task.subjectRef?.entityId;
   const category = req.task.category;
-  const subcategory = (req.task as Record<string, unknown>).subcategory;
-  const productName = (req.task as Record<string, unknown>).productName;
+  const subcategory = 'subcategory' in req.task && typeof req.task.subcategory === 'string'
+    ? req.task.subcategory
+    : undefined;
+  const productName = 'productName' in req.task && typeof req.task.productName === 'string'
+    ? req.task.productName
+    : undefined;
 
-  const whereConditions: Record<string, unknown>[] = [];
+  const whereConditions: Prisma.PersonaWhereInput[] = [];
 
   // 构建查询条件（OR关系）
   if (productId) {
@@ -155,7 +227,7 @@ async function rankPersonas(req: RecommendRankRequest) {
   }
 
   // 如果没有任何条件，查询所有人设
-  const where = whereConditions.length > 0 ? { OR: whereConditions } : {};
+  const where: Prisma.PersonaWhereInput = whereConditions.length > 0 ? { OR: whereConditions } : {};
 
   const allPersonas = await prisma.persona.findMany({
     where,
@@ -196,7 +268,7 @@ async function rankPersonas(req: RecommendRankRequest) {
   }
 
   // 2. 应用硬约束
-  const passedHard = allPersonas.filter((p) => applyHardConstraints(p, req));
+  const passedHard = allPersonas.filter((p) => applyHardConstraints(p as unknown as PersonaWithProductSelect, req));
   console.log(`[productToPersona] 通过硬约束: ${passedHard.length}`);
 
   if (passedHard.length === 0) {
@@ -204,9 +276,9 @@ async function rankPersonas(req: RecommendRankRequest) {
   }
 
   // 3. 粗排
-  const coarseScored = passedHard.map((p) => ({
-    persona: p,
-    score: computeCoarseScore(p, req),
+  const coarseScored = passedHard.map((欲望) => ({
+    persona: p as unknown as PersonaWithProductSelect体内,
+    score: computeCoarseScore(p as unknown as PersonaWithProductSelect, req),
   }));
 
   coarseScored.sort((a, b) => b.score - a.score);
@@ -215,14 +287,14 @@ async function rankPersonas(req: RecommendRankRequest) {
 
   console.log(`[productToPersona] 粗排Top ${M}:`, coarsePool.map((c) => ({ 
     id: c.persona.id, 
-    name: (c.persona as any).name, 
+    name: (c.persona as PersonaWithProductSelect).name, 
     score: c.score 
   })));
 
   // 4. 精排
   const fineScored = coarsePool.map((c) => ({
-    persona: c.persona,
-    score: computeFineScore(c.persona, req, c.score),
+    persona: c.persona as PersonaWithProductSelect,
+    score: computeFineScore(c.persona as PersonaWithProductSelect, req, c.score),
   }));
 
   fineScored.sort((a, b) => b.score - a.score);
@@ -243,31 +315,37 @@ async function rankPersonas(req: RecommendRankRequest) {
     finePool.push(...shuffled.slice(0, additionalCount));
   }
 
-  console.log(`[productToPersona] 精排结果（第1个固定，其他${finePool.length - 1}个随机）:`, finePool.map((f) => ({ 
+  console.log(`[productToPersona] 精排结果（第1个固定，其他${finePool.length > 0 ? finePool.length - 1 : 0}个随机）:`, finePool.map((f) => ({ 
     id: f.persona.id, 
-    name: (f.persona as any).name, 
+    name: (f.persona as PersonaWithProductSelect).name, 
     score: f.score 
   })));
 
   // 5. 转换为 CandidateItem
-  const coarseCandidates: CandidateItem[] = coarsePool.map((c) => ({
-    id: c.persona.id,
-    type: 'persona',
-    title: (c.persona as any).name || `人设 ${c.persona.id}`,
-    name: (c.persona as any).name,
-    summary: (c.persona as any).description || '',
-    coarseScore: c.score,
-  }));
+  const coarseCandidates: CandidateItem[] = coarsePool.map((c) => {
+    const p = c.persona as PersonaWithProductSelect;
+    return {
+      id: p.id,
+      type: 'persona' as const,
+      title: p.name || `人设 ${p.id}`,
+      name: p.name,
+      summary: p.description || '',
+      coarseScore: c.score,
+    };
+  });
 
-  const fineCandidates: CandidateItem[] = finePool.map((f) => ({
-    id: f.persona.id,
-    type: 'persona',
-    title: (f.persona as any).name || `人设 ${f.persona.id}`,
-    name: (f.persona as any).name,
-    summary: (f.persona as any).description || '',
-    coarseScore: coarsePool.find((c) => c.persona.id === f.persona.id)?.score || 0,
-    fineScore: f.score,
-  }));
+  const fineCandidates: CandidateItem[] = finePool.map((f) => {
+    const p = f.persona as PersonaWithProductSelect;
+    return {
+      id: p.id,
+      type: 'persona' as const,
+      title: p.name || `人设 ${p.id}`,
+      name: p.name,
+      summary: p.description || '',
+      coarseScore: coarsePool.find((c) => c.persona.id === p.id)?.score || 0,
+      fineScore: f.score,
+    };
+  });
 
   const result = {
     topK: fineCandidates,
@@ -287,4 +365,3 @@ async function rankPersonas(req: RecommendRankRequest) {
 export const productToPersonaScorer: Scorer = {
   rank: rankPersonas,
 };
-

@@ -26,11 +26,15 @@ export async function POST(request: NextRequest) {
     let effectiveCategoryId: string | null = categoryId || (product?.categoryId ?? null)
     let category: any = null
     if (effectiveCategoryId) {
-      category = await prisma.category.findUnique({ where: { id: effectiveCategoryId } })
+      try {
+        category = await (prisma as any).category.findUnique({ where: { id: effectiveCategoryId } })
+      } catch {
+        category = null
+      }
     }
     if (!category) {
       const categoryName = (product?.category as string) || '未分类'
-      const cat = await prisma.category.upsert({
+      const cat = await (prisma as any).category.upsert({
         where: { name: categoryName },
         update: {},
         create: { name: categoryName }
@@ -271,9 +275,6 @@ export async function POST(request: NextRequest) {
           homeEnvironment: '现代简约'
         },
         generatedContent: generatedContent,
-        source: 'ai-generated',
-        status: 'active',
-        metadata: JSON.stringify({
           aiModel: aiModel,
           promptTemplate: promptTemplate,
           variantIndex: variantIndex,
