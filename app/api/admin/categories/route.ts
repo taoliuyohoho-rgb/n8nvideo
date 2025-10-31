@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     }
 
     const hasPermission = await PermissionService.checkPermission(
-      user,
+      user as any,
       Resource.PRODUCTS,
       Action.READ
     )
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     }
 
     const hasPermission = await PermissionService.checkPermission(
-      user,
+      user as any,
       Resource.PRODUCTS,
       Action.UPDATE
     )
@@ -261,7 +261,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const hasPermission = await PermissionService.checkPermission(
-      user,
+      user as any,
       Resource.PRODUCTS,
       Action.DELETE
     )
