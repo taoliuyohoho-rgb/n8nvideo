@@ -119,12 +119,12 @@ export async function PUT(
                 promptTemplate: promptTemplate !== undefined ? promptTemplate : existingPersona.promptTemplate,
                 generationParams: generationParams !== undefined ? generationParams : existingPersona.generationParams,
                 // 旧格式字段：保留原值（不应该被覆盖）
-                coreIdentity: existingPersona.coreIdentity,
-                look: existingPersona.look,
-                vibe: existingPersona.vibe,
-                context: existingPersona.context,
+                coreIdentity: existingPersona.coreIdentity as any,
+                look: existingPersona.look as any,
+                vibe: existingPersona.vibe as any,
+                context: existingPersona.context as any,
                 why: existingPersona.why,
-                modelUsed: existingPersona.modelUsed,
+                modelUsed: existingPersona.modelUsed as any,
                 version: existingPersona.version,
                 createdBy: existingPersona.createdBy,
                 isActive: existingPersona.isActive,
@@ -132,14 +132,14 @@ export async function PUT(
                 // 多对多关系：先删除旧关系，再创建新关系
                 personaCategories: {
                   deleteMany: {}, // 删除所有旧类目关系
-                  create: finalCategoryIds.map((catId, index) => ({
+                  create: finalCategoryIds.map((catId: string, index: number) => ({
                     categoryId: catId,
                     isPrimary: index === 0
                   }))
                 },
                 personaProducts: {
                   deleteMany: {}, // 删除所有旧商品关系
-                  create: finalProductIds.length > 0 ? finalProductIds.map((prodId, index) => ({
+                  create: finalProductIds.length > 0 ? finalProductIds.map((prodId: string, index: number) => ({
                     productId: prodId,
                     isPrimary: index === 0
                   })) : []
