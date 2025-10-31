@@ -41,8 +41,8 @@ export async function POST(request: NextRequest) {
         provider: 'gemini', 
         prompt, 
         useSearch: false,
-        jsonMode: true as any
-      })
+        jsonMode: true
+      } as any)
     )
 
     let evaluationResult
@@ -91,8 +91,8 @@ export async function POST(request: NextRequest) {
               provider: 'gemini', 
               prompt: optimizedPrompt, 
               useSearch: false,
-              jsonMode: true as any
-            })
+              jsonMode: true
+            } as any)
           )
 
           try {
