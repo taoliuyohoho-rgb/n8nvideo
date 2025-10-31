@@ -62,15 +62,13 @@ export async function POST(request: NextRequest) {
       const analysisResult = await runCompetitorContract({
         input: {
           rawText: competitorText || '',
-          images: imageBuffers.length > 0 ? imageBuffers.map(buf => `data:image/jpeg;base64,${buf.toString('base64')}`) : undefined
+          images: imageBuffers.length > 0 ? imageBuffers.map((buf: Buffer) => `data:image/jpeg;base64,${buf.toString('base64')}`) : undefined
         },
         needs: {
           vision: imageBuffers.length > 0,
-          search: false,
-          streaming: false
-        },
+          search: false
+        } as any,
         policy: {
-          maxConcurrency: 3,
           timeoutMs: 30000,
           allowFallback: allowFallback || false
         },
@@ -445,7 +443,7 @@ export async function POST(request: NextRequest) {
           sellingPoints: existingSellingPointsList, // 返回完整的卖点列表，而不是新增的
           painPoints: existingPainPoints, // 返回完整的痛点列表
           targetAudience: targetAudience || null, // 使用提取的目标受众字符串
-          analysisMetadata: analysisResult.metadata
+          analysisMetadata: (analysisResult as any).metadata
         }
       })
     }
@@ -473,10 +471,8 @@ export async function POST(request: NextRequest) {
         needs: {
           vision: false,
           search: false,
-          streaming: false
-        },
+        } as any,
         policy: {
-          maxConcurrency: 3,
           timeoutMs: 30000,
           allowFallback: false
         },
