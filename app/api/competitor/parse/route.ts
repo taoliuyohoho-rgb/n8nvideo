@@ -54,7 +54,6 @@ export async function POST(request: NextRequest) {
       needs: {
         vision: !!(imageDataURLs && imageDataURLs.length > 0),
         search: false,
-        streaming: false
       },
       policy: {
         maxConcurrency: 3,

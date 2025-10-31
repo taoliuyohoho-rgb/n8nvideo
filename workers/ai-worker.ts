@@ -110,7 +110,6 @@ async function processTask(taskId: string) {
             needs: {
               vision: false,
               search: false,
-              streaming: false
             },
             policy: {
               maxConcurrency: 3,
@@ -138,7 +137,6 @@ async function processTask(taskId: string) {
                   needs: {
                     vision: false,
                     search: false,
-                    streaming: false
                   },
                   policy: {
                     maxConcurrency: 3,

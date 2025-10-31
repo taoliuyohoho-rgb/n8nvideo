@@ -31,7 +31,6 @@ async function processProductCompetitorAnalysis(
     needs: {
       vision: !!(images && images.length > 0),
       search: false,
-      streaming: false
     },
     policy: {
       maxConcurrency: 3,
