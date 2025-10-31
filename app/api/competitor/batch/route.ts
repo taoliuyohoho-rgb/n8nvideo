@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     for (const p of products) {
       let task: { id: string; productId: string; platform: string }
       if (hasCompetitorTasks) {
-        task = await (prisma as { competitorTask: { create: (data: Record<string, unknown>) => Promise<{ id: string; productId: string; platform: string }> } }).competitorTask.create({
+        task = await ((prisma as unknown) as { competitorTask: { create: (data: Record<string, unknown>) => Promise<{ id: string; productId: string; platform: string }> } }).competitorTask.create({
           data: {
             productId: p.id,
             status: 'pending',
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       for (const task of tasks) {
         try {
           if (hasCompetitorTasks) {
-            await (prisma as { competitorTask: { update: (params: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> } }).competitorTask.update({ where: { id: task.id }, data: { status: 'running', startedAt: new Date() } })
+            await ((prisma as unknown) as { competitorTask: { update: (params: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> } }).competitorTask.update({ where: { id: task.id }, data: { status: 'running', startedAt: new Date() } })
           } else {
             await prisma.commentScrapingTask.update({ where: { id: task.id }, data: { status: 'running', startedAt: new Date() } })
           }
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
             const msg = (e as Error)?.message || 'AI处理失败'
             // 写入ai_call_logs
             if ((prisma as { aiCallLog?: { create: unknown } }).aiCallLog?.create) {
-              await (prisma as { aiCallLog: { create: (data: Record<string, unknown>) => Promise<unknown> } }).aiCallLog.create({ 
+              await ((prisma as unknown) as { aiCallLog: { create: (data: Record<string, unknown>) => Promise<unknown> } }).aiCallLog.create({ 
                 data: {
                   business: 'competitor',
                   model: model || 'auto',
