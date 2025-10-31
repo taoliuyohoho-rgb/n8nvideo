@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone', // 启用 standalone 输出，用于 Docker/Cloud Run
   images: {
     domains: ['localhost', 'example.com'],
   },

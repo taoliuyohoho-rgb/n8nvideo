@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     // 调用推荐系统进行风格匹配（product->style）
     const recommendation = await recommendRank({
-      scenario: 'product->style',
+      scenario: 'product->style' as any,
       task: {
         subjectRef: { entityType: 'product', entityId: productName }, // 用产品名作标识
         category: category,
