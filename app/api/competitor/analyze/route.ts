@@ -567,7 +567,7 @@ export async function GET(request: NextRequest) {
             policy: {
               timeoutMs: 30000,
               allowFallback: false
-            },
+            } as any,
             customPrompt: undefined,
             context: {
               productName: '',
