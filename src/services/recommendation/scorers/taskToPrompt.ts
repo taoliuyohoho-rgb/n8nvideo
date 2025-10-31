@@ -5,18 +5,16 @@
  * 根据任务特征和上下文，从Prompt库中选择最合适的模板。
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import type { 
-  RecommendSubject, 
-  RecommendCandidate, 
-  RecommendContext, 
-  ScoreResult 
+  RecommendContextInput as RecommendContext, 
+  CandidateItem as RecommendCandidate 
 } from '../types';
 
-const prisma = new PrismaClient();
 
-interface TaskSubject extends RecommendSubject {
-  businessModule: string; // 业务模块：product-analysis, product-competitor, video-script, etc.
+interface TaskSubject {
+  id?: string;
+  businessModule: string; // 业务模块：product-analysis, competitor-analysis, video-script, video-generation, persona.generate, etc.
   taskType?: string; // 任务类型细分
   inputLength?: number; // 输入长度
   expectedOutputFormat?: string; // 期望输出格式
@@ -33,11 +31,14 @@ interface PromptCandidate extends RecommendCandidate {
   usageCount?: number; // 使用次数
   successRate?: number; // 成功率 0-1
   isDefault?: boolean; // 是否为默认模板
+  isActive?: boolean;
 }
 
 /**
  * 粗排：快速过滤和初步打分
  */
+type ScoreResult = { candidateId: string; score: number; reason: string; filtered: boolean; filterReason?: string };
+
 export async function coarseRank(
   subject: TaskSubject,
   candidates: PromptCandidate[],
@@ -63,33 +64,80 @@ export async function coarseRank(
       filterReason = '模板未激活';
     }
 
+    // 硬过滤：类目必须匹配（最高优先级）
+    // 从 candidate.name 提取类目前缀（如 "Beauty-", "3C-", "Kitchen-"）
+    // 从 context.category 获取商品类目
+    if (!filtered && context?.category) {
+      const categoryMap: Record<string, string[]> = {
+        '3C': ['3C'],
+        '美妆': ['Beauty'],
+        '个护': ['PersonalCare'],
+        '厨具': ['Kitchen'],
+        '大健康': ['Health'],
+        '图书': ['Book'],
+      }
+      const allowedPrefixes = categoryMap[context.category as string] || []
+      
+      // Renderer 模板是通用的，不过滤
+      const isRendererTemplate = candidate.name.startsWith('Renderer-')
+      
+      if (!isRendererTemplate && allowedPrefixes.length > 0) {
+        const hasMatchingPrefix = allowedPrefixes.some(prefix => candidate.name.startsWith(prefix))
+        if (!hasMatchingPrefix) {
+          filtered = true
+          filterReason = `类目不匹配: 商品类目=${context.category}, 模板=${candidate.name.split('-')[0]}`
+        }
+      }
+    }
+
     if (!filtered) {
-      // 基础分：默认模板优先
-      if (candidate.isDefault) {
-        score += 30;
-        reasons.push('默认模板+30');
-      } else {
-        score += 10;
+      // 类目匹配加分（最高权重，60分）
+      if (context?.category) {
+        const categoryMap: Record<string, string[]> = {
+          '3C': ['3C'],
+          '美妆': ['Beauty'],
+          '个护': ['PersonalCare'],
+          '厨具': ['Kitchen'],
+          '大健康': ['Health'],
+          '图书': ['Book'],
+        }
+        const allowedPrefixes = categoryMap[context.category as string] || []
+        const hasMatchingPrefix = allowedPrefixes.some(prefix => candidate.name.startsWith(prefix))
+        if (hasMatchingPrefix) {
+          score += 60
+          reasons.push('类目匹配+60')
+        } else if (candidate.name.startsWith('Renderer-')) {
+          score += 40 // Renderer 是通用模板，给中等分
+          reasons.push('通用Renderer+40')
+        }
       }
 
-      // 历史性能分（0-40分）
+      // 基础分：默认模板优先
+      if (candidate.isDefault) {
+        score += 20;
+        reasons.push('默认模板+20');
+      } else {
+        score += 5;
+      }
+
+      // 历史性能分（0-25分）
       if (candidate.performance !== undefined && candidate.performance !== null) {
-        const perfScore = candidate.performance * 40;
+        const perfScore = candidate.performance * 25;
         score += perfScore;
         reasons.push(`历史性能+${perfScore.toFixed(1)}`);
       } else {
-        score += 20; // 无历史数据，给予中等分数
-        reasons.push('无历史数据+20');
+        score += 12; // 无历史数据，给予中等分数
+        reasons.push('无历史数据+12');
       }
 
-      // 成功率分（0-30分）
+      // 成功率分（0-15分）
       if (candidate.successRate !== undefined && candidate.successRate !== null) {
-        const successScore = candidate.successRate * 30;
+        const successScore = candidate.successRate * 15;
         score += successScore;
         reasons.push(`成功率+${successScore.toFixed(1)}`);
       } else {
-        score += 15; // 无历史数据，给予中等分数
-        reasons.push('无成功率数据+15');
+        score += 8; // 无历史数据，给予中等分数
+        reasons.push('无成功率数据+8');
       }
     }
 
@@ -128,9 +176,9 @@ export async function fineRank(
     const reasons: string[] = [coarseResult.reason];
 
     // 变量完整性匹配（0-15分）
-    if (candidate.variables && context.availableVariables) {
+    if (candidate.variables && (context as any).availableVariables) {
       const requiredVars = candidate.variables;
-      const availableVars = context.availableVariables as string[];
+      const availableVars = (context as any).availableVariables as string[];
       const matchedVars = requiredVars.filter(v => availableVars.includes(v));
       const matchRate = matchedVars.length / requiredVars.length;
       const varScore = matchRate * 15;

@@ -1,17 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { CompetitorAnalysisService } from '@/src/services/competitor/CompetitorAnalysisService'
-import { PrismaClient } from '@prisma/client'
-import { AiExecutor } from '@/src/services/ai/AiExecutor'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { analyzeContent, createCompetitorAnalysisService } from '@/src/services/analysis'
 import { runCompetitorContract } from '@/src/services/ai/contracts'
+import { prisma } from '@/lib/prisma'
 import { recommendRank } from '@/src/services/recommendation/recommend'
 import '@/src/services/recommendation/index'
-
-const prisma = new PrismaClient()
-const competitorService = new CompetitorAnalysisService({
-  supportedPlatforms: ['tiktok', 'youtube', 'instagram', 'facebook'],
-  timeout: 30,
-  maxRetries: 3
-})
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,27 +22,6 @@ export async function POST(request: NextRequest) {
       allowFallback 
     } = body
 
-    // 工具：宽容解析JSON（容忍代码块/前后缀）
-    const tryParseJson = (raw: string) => {
-      if (!raw || typeof raw !== 'string') throw new Error('empty')
-      const text = raw.trim()
-      // 1) ```json ... ```
-      const fenced = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/```\s*([\s\S]*?)```/)
-      if (fenced && fenced[1]) {
-        const t = fenced[1].trim()
-        return JSON.parse(t)
-      }
-      // 2) 截取第一个 { 到最后一个 }
-      const start = text.indexOf('{')
-      const end = text.lastIndexOf('}')
-      if (start !== -1 && end !== -1 && end > start) {
-        const mid = text.slice(start, end + 1)
-        return JSON.parse(mid)
-      }
-      // 3) 直接尝试
-      return JSON.parse(text)
-    }
-
     // 新版：支持 productId + competitorText/Images
     if (productId && (competitorText || (competitorImages && competitorImages.length > 0))) {
       // 1. 获取商品信息
@@ -64,392 +36,416 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // 解析卖点(兼容字符串JSON/数组)和目标国家
-      let existingSellingPointsList: string[] = []
-      let targetCountriesList: string[] = []
+      // 2. 将base64图片转换为Buffer（仅接受 data:image/*;base64, 前缀的 DataURL）
+      const imageBuffers = competitorImages ? competitorImages
+        .filter((val: unknown) => typeof val === 'string' && (val as string).startsWith('data:image'))
+        .map((base64: string, index: number) => {
+        console.log(`[API] 处理图片 ${index + 1}:`, {
+          originalLength: base64.length,
+          hasPrefix: base64.includes(','),
+          prefix: base64.substring(0, 50) + '...'
+        })
+        
+        // 移除data:image/...;base64,前缀
+        const base64Data = base64.includes(',') ? base64.split(',')[1] : base64
+        const buffer = Buffer.from(base64Data, 'base64')
+        
+        console.log(`[API] 转换后图片 ${index + 1}:`, {
+          bufferLength: buffer.length,
+          firstBytes: Array.from(buffer.slice(0, 8)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+        })
+        
+        return buffer
+      }) : []
+
+      // 3. 使用新的竞品分析Contract（直接调用，绕过编排器）
+      const analysisResult = await runCompetitorContract({
+        input: {
+          rawText: competitorText || '',
+          images: imageBuffers.length > 0 ? imageBuffers.map(buf => `data:image/jpeg;base64,${buf.toString('base64')}`) : undefined
+        },
+        needs: {
+          vision: imageBuffers.length > 0,
+          search: false,
+          streaming: false
+        },
+        policy: {
+          maxConcurrency: 3,
+          timeoutMs: 30000,
+          allowFallback: allowFallback || false
+        },
+        customPrompt,
+        context: {
+          productName: product.name,
+          category: product.category || '',
+          painPoints: []
+        }
+      })
+
+      console.log('[API] runCompetitorContract 返回:', JSON.stringify(analysisResult, null, 2))
+
+      // 3. 处理分析结果并更新商品信息
+      // runCompetitorContract 直接返回 CompetitorOutput 类型：
+      // { description, sellingPoints, painPoints?, targetAudience? }
+      // 注意：targetCountries 不从AI分析提取，而是从商品预设中读取
+      const normalizedRoot = analysisResult || {}
+
+      console.log('[API] AI分析结果原始数据(归一化后root):', JSON.stringify(normalizedRoot, null, 2))
+
+      const coerceToArray = (val: unknown): string[] => {
+        if (!val) return []
+        if (Array.isArray(val)) return val.filter(Boolean).map(v => String(v).trim()).filter(Boolean)
+        if (typeof val === 'string') {
+          const s = val.trim()
+          if (!s) return []
+          return s.split(/[、，,;；\n\r\t|\/]/).map(x => x.trim()).filter(Boolean)
+        }
+        return []
+      }
+
+      const firstNonEmpty = (...candidates: unknown[]): string[] => {
+        for (const c of candidates) {
+          const arr = coerceToArray(c)
+          if (arr.length > 0) return arr
+        }
+        return []
+      }
+
+      // 更健壮地提取卖点/痛点，兼容多种字段命名
+      const root = normalizedRoot as Record<string, unknown>
+      let sellingPoints: string[] = firstNonEmpty(
+        root?.sellingPoints,
+        root?.selling_points,
+        root?.points,
+        root?.bullets,
+        root?.advantages,
+        root?.highlights,
+        root?.features,
+        root?.pros,
+        root?.卖点,
+        root?.亮点,
+        root?.特点,
+        root?.优势
+      )
+      let painPoints: string[] = firstNonEmpty(
+        root?.painPoints,
+        root?.pain_points,
+        root?.pains,
+        root?.issues,
+        root?.cons,
+        root?.痛点,
+        root?.问题,
+        root?.劣势
+      )
+      // 目标受众：更健壮地提取并标准化为数组（补充更多同义字段）
+      const targetAudienceList: string[] = firstNonEmpty(
+        root?.targetAudiences,
+        root?.targetAudience,
+        root?.audience,
+        root?.audiences,
+        root?.targetUsers,
+        root?.userSegments,
+        root?.audienceSegments,
+        root?.segments,
+        root?.targetGroups,
+        root?.用户群,
+        root?.目标用户,
+        root?.受众,
+        root?.人群,
+        root?.适用人群,
+        root?.target
+      )
       
+      // 提取单个目标受众字符串（用于描述生成）
+      const targetAudience = targetAudienceList.length > 0 ? targetAudienceList[0] : ''
+
+      // 类目敏感过滤：避免图书类出现"防水/材质/耐用"等不相关词
       try {
-        if ((product as any).sellingPoints) {
-          const sp: any = (product as any).sellingPoints
-          if (typeof sp === 'string') {
-            existingSellingPointsList = JSON.parse(sp)
-          } else if (Array.isArray(sp)) {
-            existingSellingPointsList = sp.filter(Boolean).map((s: any) => String(s))
+        const productCategory = (product as { category?: string })?.category || ''
+        const isBookCategory = typeof productCategory === 'string' && /书|图书|书籍/i.test(productCategory)
+        if (isBookCategory) {
+          const invalidTerms = /(防水|耐用|材质|轻便|多功能|智能|外观|机身|充电|续航|蓝牙|拍照|像素|噪音)/i
+          sellingPoints = (sellingPoints || []).filter(p => !invalidTerms.test(String(p)))
+          painPoints = (painPoints || []).filter(p => !invalidTerms.test(String(p)))
+        }
+      } catch {}
+
+      // 兜底：若AI未提取到卖点，尝试从用户输入文本中解析 “卖点:” 行
+      if (sellingPoints.length === 0 && typeof competitorText === 'string' && competitorText.trim()) {
+        try {
+          const rawMatches = Array.from(competitorText.matchAll(/卖点[:：]\s*([^\n\r]+)/g))
+          const extracted: string[] = []
+          for (const m of rawMatches) {
+            const line = (m[1] || '').trim()
+            if (!line) continue
+            // 以常见分隔符切分：中文顿号/逗号/分号/英文逗号
+            const parts = line.split(/[、,，;；]/).map(s => s.trim()).filter(Boolean)
+            extracted.push(...parts)
+          }
+          const uniq = Array.from(new Set(extracted.map(s => s.trim()).filter(Boolean)))
+          if (uniq.length > 0) {
+            sellingPoints = uniq
+            console.log('[API] 兜底解析卖点成功（来自文本“卖点:”行）:', sellingPoints.slice(0, 5))
+          }
+        } catch (e) {
+          console.warn('[API] 兜底解析卖点失败:', e)
+        }
+      }
+      
+      console.log('[API] 提取到的数据:', {
+        sellingPointsCount: sellingPoints.length,
+        painPointsCount: painPoints.length,
+        targetAudienceCount: targetAudienceList.length,
+        sellingPoints: sellingPoints.slice(0, 3),
+        painPoints: painPoints.slice(0, 3),
+        targetAudience: targetAudience
+      })
+
+      // 解析现有卖点
+      let existingSellingPointsList: string[] = []
+      try {
+        const productSellingPoints = (product as { sellingPoints?: string | string[] }).sellingPoints
+        if (productSellingPoints) {
+          if (typeof productSellingPoints === 'string') {
+            existingSellingPointsList = JSON.parse(productSellingPoints)
+          } else if (Array.isArray(productSellingPoints)) {
+            existingSellingPointsList = productSellingPoints.filter(Boolean).map(s => String(s))
           }
         }
       } catch (e) {
         console.warn('解析sellingPoints失败:', e)
       }
 
-      try {
-        if (product.targetCountries) {
-          targetCountriesList = JSON.parse(product.targetCountries)
-        }
-      } catch (e) {
-        console.warn('解析targetCountries失败:', e)
-      }
-
-      // 2a. 若文本中包含URL，则后端尝试抓取并合并到文本
-      let normalizedCompetitorText = competitorText || ''
-      try {
-        const urlInText = (normalizedCompetitorText.match(/https?:\/\/\S+/i) || [])[0]
-        if (urlInText) {
-          const resp = await fetch(urlInText, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) })
-          if (resp.ok) {
-            const html = await resp.text()
-            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-            const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)
-            const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
-            let keyInfo = ''
-            if (bodyMatch) {
-              keyInfo = bodyMatch[1]
-                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .slice(0, 600)
-            }
-            const title = titleMatch ? titleMatch[1].trim() : ''
-            const desc = descMatch ? descMatch[1].trim() : ''
-            normalizedCompetitorText = [title, desc, keyInfo].filter(Boolean).join('\n')
-          }
-        }
-      } catch {
-        // 忽略抓取失败
-      }
-
-      // 2b. 构建Prompt（使用customPrompt或默认）
-      const defaultPrompt = `# 任务
-你是资深跨境电商运营专家。基于下方的**竞品详情页内容**（文本或图片），为我们的商品提取新的卖点和目标受众信息。
-
-# 我们的商品信息
-**商品名称**: ${product.name}
-**所属类目**: ${product.category}
-**目标市场**: ${targetCountriesList.length > 0 ? targetCountriesList.join(', ') : '东南亚'}
-
-**已有卖点**（请避免重复）:
-${existingSellingPointsList.length > 0 ? existingSellingPointsList.map((sp, i) => `${i + 1}. ${sp}`).join('\n') : '暂无'}
-
-# 竞品详情页内容
-${normalizedCompetitorText || '（见图片）'}
-
-# 输出要求
-严格按以下JSON格式输出，只输出JSON，不要任何解释：
-
-{
-  "sellingPoints": [
-    "针对${product.name}提取的卖点1（10-25字）",
-    "针对${product.name}提取的卖点2（10-25字）",
-    "..."
-  ],
-  "targetAudience": "目标受众描述（10-30字，可选）"
-}
-
-**注意事项**：
-1. 卖点必须适用于"${product.name}"这个商品，不要泛化
-2. 从竞品内容中提取，但表述为适合我们商品的卖点
-3. 每个卖点10-25字，简洁有力
-4. 与已有卖点去重，提供新的角度
-5. 目标受众要结合商品类目和竞品信息分析
-6. 只基于输入证据，不得臆造
-7. 至少提取3-8个卖点`
-
-      // -- 用户自定义模板填充与健壮性 --
-      const fillTemplate = (tpl: string, vars: Record<string, string>) =>
-        tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (vars[k] ?? ''))
-
-      // 尝试从文本中抽取一个URL作为占位
-      const urlInText = (normalizedCompetitorText.match(/https?:\/\/\S+/i) || [])[0] || ''
-      const urlForPrompt = (typeof url === 'string' && url) ? url : urlInText
-
-      let finalPrompt = customPrompt || defaultPrompt
-      if (customPrompt && typeof customPrompt === 'string') {
-        // 1) 预填常见变量
-        let candidate = fillTemplate(customPrompt, {
-          competitorUrl: urlForPrompt,
-          category: product.category || '',
-          productName: product.name || '',
-          targetCountry: (targetCountriesList && targetCountriesList[0]) || '',
-          targetAudience: ''
-        })
-        // 2) 若模板缺少 {evidence} 占位，则追加证据占位，避免丢证据
-        if (!candidate.includes('{evidence}')) {
-          candidate = `${candidate}\n\n证据：\n{evidence}`
-        }
-        // 3) 若用户模板仍残留未替换的 {{...}} 或明确依赖URL而我们没有URL，则退回默认模板
-        if (/\{\{\s*\w+\s*\}\}/.test(candidate) || (/\{\{\s*competitorUrl\s*\}\}/.test(customPrompt) && !urlForPrompt)) {
-          finalPrompt = defaultPrompt
-        } else {
-          finalPrompt = candidate
-        }
-      }
-
-      // 3. 调用AI分析（优先使用严格JSON校验合同执行，失败再回退）
-      try {
-        const parsed = await runCompetitorContract({
-          input: {
-            rawText: normalizedCompetitorText,
-            images: Array.isArray(competitorImages) ? competitorImages : undefined,
-          },
-          needs: { vision: Array.isArray(competitorImages) && competitorImages.length > 0 },
-          policy: { allowFallback: true, model: 'auto', requireJsonMode: true },
-          customPrompt: finalPrompt,
-          context: { productName: product.name, category: product.category }
-        })
-
-        const sellingPoints = Array.isArray(parsed?.sellingPoints) ? parsed.sellingPoints : []
-        const targetAudience = parsed?.targetAudience || ''
-
-        // 保存卖点到数据库
-        let addedSellingPoints = 0
-        const existingSet = new Set(existingSellingPointsList.map(sp => sp.trim().toLowerCase()))
-        for (const point of sellingPoints) {
-          const normalizedPoint = String(point || '').trim()
-          if (normalizedPoint && !existingSet.has(normalizedPoint.toLowerCase())) {
-            existingSellingPointsList.push(normalizedPoint)
-            addedSellingPoints++
-            existingSet.add(normalizedPoint.toLowerCase())
-          }
-        }
-
-        // 准备更新数据
-        const updateData: any = {
-          updatedAt: new Date()
-        }
-
-        // 更新卖点
-        if (addedSellingPoints > 0) {
-          updateData.sellingPoints = JSON.stringify(existingSellingPointsList)
-        }
-
-        // 更新目标受众（如果AI提取到了新的目标受众）
-        if (targetAudience && targetAudience.trim()) {
-          updateData.targetAudience = targetAudience.trim()
-        }
-
-        // 执行数据库更新
-        if (Object.keys(updateData).length > 1) { // 除了updatedAt还有其他字段
-          await prisma.product.update({
-            where: { id: productId },
-            data: updateData
-          })
-        }
-
-        // 反馈（可选，沿用原逻辑）
-        if (modelDecisionId) {
-          try {
-            await fetch('http://localhost:3000/api/recommend/feedback', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ decisionId: modelDecisionId, accepted: true, bucket: 'fine', notes: `竞品分析成功，新增卖点${addedSellingPoints}个` })
-            })
-          } catch {}
-        }
-        if (promptDecisionId) {
-          try {
-            await fetch('http://localhost:3000/api/recommend/feedback', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ decisionId: promptDecisionId, accepted: true, bucket: 'fine', notes: `Prompt执行成功，提取${addedSellingPoints}个卖点` })
-            })
-          } catch {}
-        }
-
-        return NextResponse.json({ 
-          success: true, 
-          data: { 
-            productId, 
-            addedSellingPoints, 
-            addedPainPoints: 0, 
-            sellingPoints,
-            targetAudience: targetAudience || null
-          } 
-        })
-      } catch (e) {
-        // 合同执行失败则回退旧路径
-      }
-
-      // 回退执行
-      const aiExecutor = new AiExecutor()
-      
-      // 解析provider
-      // 通过推荐引擎获取模型候选链（优先使用前端传入的模型名，其次服务端重算一遍）
-      const modelFallbackNames: string[] = []
-      const parseProvider = (name: string): 'gemini' | 'doubao' | 'openai' | 'deepseek' | 'claude' => {
-        const p = (name || '').split('/')?.[0]?.toLowerCase() || ''
-        if (p === 'google' || p === 'gemini') return 'gemini'
-        if (p === 'openai' || p === 'gpt') return 'openai'
-        if (p === 'doubao' || p === '字节跳动' || p === 'bytedance') return 'doubao'
-        if (p === 'deepseek') return 'deepseek'
-        if (p === 'claude' || p === 'anthropic') return 'claude'
-        return 'openai'
-      }
-
-      if (aiModel && typeof aiModel === 'string') {
-        modelFallbackNames.push(aiModel)
-      }
-
-      try {
-        const reco = await recommendRank({
-          scenario: 'task->model',
-          task: {
-            taskType: 'competitor-analysis',
-            contentType: (competitorImages && competitorImages.length > 0) ? 'image' : 'text',
-            jsonRequirement: true
-          },
-          context: {
-            channel: 'web'
-          },
-          constraints: {
-            requireJsonMode: true,
-            maxLatencyMs: 10000
-          },
-          options: { strategyVersion: 'v1' }
-        })
-        const chain: string[] = []
-        if (reco?.chosen?.name) chain.push(reco.chosen.name)
-        if (reco?.topK?.[1]?.name) chain.push(reco.topK[1].name)
-        if (Array.isArray(reco?.alternatives?.coarseExtras)) {
-          for (const c of reco.alternatives.coarseExtras) if (c?.name) chain.push(c.name)
-        }
-        if (Array.isArray(reco?.alternatives?.outOfPool)) {
-          for (const c of reco.alternatives.outOfPool) if (c?.name) chain.push(c.name)
-        }
-        // 将服务端候选追加到链尾（避免与前端重复）
-        for (const n of chain) if (n && !modelFallbackNames.includes(n)) modelFallbackNames.push(n)
-      } catch (e) {
-        console.warn('服务端获取模型候选失败，继续使用前端提供的模型:', e)
-      }
-
-      // 至少保证有一项
-      if (modelFallbackNames.length === 0) modelFallbackNames.push('gemini/gemini-1.5-flash')
-
-      console.log('竞品分析 - 模型候选链:', modelFallbackNames)
-      
-      // 顺序尝试：Top1 → Top2 → 粗排2个 → 池外2个
-      let analysisResult: string | null = null
-      const tryErrors: string[] = []
-      for (const name of modelFallbackNames) {
-        const provider = parseProvider(name)
-        try {
-          console.log(`尝试执行模型: ${name} (provider=${provider})`)
-          analysisResult = await aiExecutor.execute({
-            provider,
-            prompt: finalPrompt,
-            useSearch: false,
-            images: competitorImages || []
-          })
-          if (analysisResult) break
-        } catch (err: any) {
-          const msg = err?.message || 'unknown'
-          console.warn(`模型失败: ${name} → ${msg}`)
-          tryErrors.push(`${name}: ${msg}`)
-          continue
-        }
-      }
-      if (!analysisResult) {
-        return NextResponse.json({
-          success: false,
-          error: 'AI分析失败',
-          details: `所有候选模型均失败: ${tryErrors.join(' | ')}`
-        }, { status: 500 })
-      }
-
-      // 4. 解析结果（宽容解析）
-      let parsedResult
-      try {
-        parsedResult = tryParseJson(analysisResult)
-      } catch (e) {
-        console.error('JSON解析失败:', analysisResult)
-        return NextResponse.json({
-          success: false,
-          error: 'AI返回结果格式错误',
-          details: analysisResult
-        }, { status: 500 })
-      }
-
-      const { sellingPoints = [], targetAudience } = parsedResult
-
-      // 5. 保存卖点和目标受众到数据库（去重并更新JSON字符串）
+      // 去重并添加新卖点
       let addedSellingPoints = 0
       const existingSet = new Set(existingSellingPointsList.map(sp => sp.trim().toLowerCase()))
       const newSellingPoints: string[] = []
       
+      console.log('[API] 现有卖点数量:', existingSellingPointsList.length)
+      
       for (const point of sellingPoints) {
-        const normalizedPoint = point.trim()
+        const normalizedPoint = String(point || '').trim()
         if (normalizedPoint && !existingSet.has(normalizedPoint.toLowerCase())) {
           newSellingPoints.push(normalizedPoint)
-          existingSellingPointsList.push(normalizedPoint) // 添加到已有列表
+          existingSellingPointsList.push(normalizedPoint)
           addedSellingPoints++
-          existingSet.add(normalizedPoint.toLowerCase()) // 避免本次提取的重复
+          existingSet.add(normalizedPoint.toLowerCase())
+          console.log('[API] 新增卖点:', normalizedPoint)
+        } else if (normalizedPoint) {
+          console.log('[API] 卖点已存在，跳过:', normalizedPoint)
         }
       }
+      
+      console.log('[API] 新增卖点统计:', {
+        totalFromAI: sellingPoints.length,
+        alreadyExists: sellingPoints.length - newSellingPoints.length,
+        added: addedSellingPoints,
+        finalTotal: existingSellingPointsList.length
+      })
+
+      // 解析现有痛点（兼容字符串/数组/对象数组）
+      let existingPainPoints: string[] = []
+      try {
+        const productPainPoints = (product as { painPoints?: string | string[] }).painPoints
+        if (productPainPoints) {
+          const normalize = (val: unknown): string[] => {
+            if (!val) return []
+            if (Array.isArray(val)) {
+              return val
+                .map((item) => {
+                  if (typeof item === 'string') return item
+                  if (item && typeof item === 'object') {
+                    const obj = item as Record<string, unknown>
+                    return String(
+                      obj.text || obj.painPoint || obj.point || obj.label || obj.value || ''
+                    )
+                  }
+                  return ''
+                })
+                .map(s => String(s).trim())
+                .filter(Boolean)
+            }
+            if (typeof val === 'string') {
+              try {
+                const parsed = JSON.parse(val)
+                return normalize(parsed)
+              } catch {
+                return []
+              }
+            }
+            return []
+          }
+          existingPainPoints = normalize(productPainPoints)
+        }
+      } catch {}
+
+      // 合并痛点
+      let addedPainPoints = 0
+      const painSet = new Set(existingPainPoints.map(p => p.trim().toLowerCase()))
+      console.log('[API] 现有痛点数量:', existingPainPoints.length)
+      
+      for (const p of painPoints as string[]) {
+        const norm = String(p || '').trim()
+        if (norm && !painSet.has(norm.toLowerCase())) {
+          existingPainPoints.push(norm)
+          painSet.add(norm.toLowerCase())
+          addedPainPoints++
+          console.log('[API] 新增痛点:', norm)
+        } else if (norm) {
+          console.log('[API] 痛点已存在，跳过:', norm)
+        }
+      }
+      
+      console.log('[API] 新增痛点统计:', {
+        totalFromAI: painPoints.length,
+        alreadyExists: painPoints.length - addedPainPoints,
+        added: addedPainPoints,
+        finalTotal: existingPainPoints.length
+      })
 
       // 准备更新数据
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         updatedAt: new Date()
       }
 
-      // 更新卖点
+      // 更新商品描述（从竞品信息中提取，优先使用目标受众或第一个卖点；限制20字）
+      const clamp20 = (s: string) => {
+        const t = String(s || '').trim()
+        return t.length <= 20 ? t : t.slice(0, 20)
+      }
+      if (targetAudience?.trim()) {
+        updateData.description = clamp20(targetAudience)
+        console.log('[API] 更新商品描述（目标受众）:', updateData.description)
+      } else if (sellingPoints.length > 0) {
+        updateData.description = clamp20(sellingPoints[0])
+        console.log('[API] 更新商品描述（第一个卖点）:', updateData.description)
+      }
+
+      // 更新卖点（JSON字段存储为数组，保持与其他接口一致）
       if (addedSellingPoints > 0) {
-        updateData.sellingPoints = existingSellingPointsList as any
+        updateData.sellingPoints = existingSellingPointsList
       }
 
-      // 更新目标受众（如果AI提取到了新的目标受众）
-      if (targetAudience && targetAudience.trim()) {
-        updateData.targetAudience = targetAudience.trim()
+      // 兜底：若AI未提取到痛点，从文本中解析"痛点:"行
+      if (painPoints.length === 0 && typeof competitorText === 'string' && competitorText.trim()) {
+        try {
+          const rawMatches = Array.from(competitorText.matchAll(/痛点[:：]\s*([^\n\r]+)/g))
+          const extracted: string[] = []
+          for (const m of rawMatches) {
+            const line = (m[1] || '').trim()
+            if (!line) continue
+            const parts = line.split(/[、,，;；]/).map(s => s.trim()).filter(Boolean)
+            extracted.push(...parts)
+          }
+          const uniq = Array.from(new Set(extracted.map(s => s.trim()).filter(Boolean)))
+          if (uniq.length > 0) {
+            for (const pt of uniq) {
+              const key = pt.toLowerCase()
+              if (!painSet.has(key)) {
+                existingPainPoints.push(pt)
+                painSet.add(key)
+                addedPainPoints++
+              }
+            }
+            console.log('[API] 兜底解析痛点成功（来自文本"痛点:"行）:', uniq.slice(0, 5))
+          }
+        } catch (e) {
+          console.warn('[API] 兜底解析痛点失败:', e)
+        }
       }
 
-      // 执行数据库更新
-      if (Object.keys(updateData).length > 1) { // 除了updatedAt还有其他字段
+      // 更新痛点：强制写入（无论是否新增）
+      updateData.painPoints = existingPainPoints
+      updateData.painPointsLastUpdate = new Date()
+      updateData.painPointsSource = 'ai-analysis'
+
+      // 更新目标受众：强制写入（无论是否有新值）
+      try {
+        const existingAudience = Array.isArray((product as { targetAudience?: string | string[] }).targetAudience)
+          ? ((product as { targetAudience: string[] }).targetAudience)
+          : []
+        const mergedAudience = Array.from(new Set([
+          ...existingAudience.filter(Boolean).map(s => String(s).trim()),
+          ...targetAudienceList.map(s => String(s || '').trim()).filter(Boolean)
+        ]))
+        updateData.targetAudience = mergedAudience
+      } catch {
+        updateData.targetAudience = targetAudienceList.map(s => String(s || '').trim()).filter(Boolean)
+      }
+
+      // 目标国家不从AI分析提取，保持商品原有设置
+
+      // 执行数据库更新（检查是否有除updatedAt外的其他字段）
+      const fieldsToUpdate = Object.keys(updateData).filter(key => key !== 'updatedAt')
+      if (fieldsToUpdate.length > 0) {
         await prisma.product.update({
           where: { id: productId },
           data: updateData
         })
+        
+        console.log(`[API] 商品 ${productId} 数据已更新:`, {
+          addedSellingPoints,
+          addedPainPoints,
+          totalSellingPoints: existingSellingPointsList.length,
+          totalPainPoints: existingPainPoints.length,
+          updatedFields: fieldsToUpdate,
+          updateData
+        })
+      } else {
+        console.log(`[API] 商品 ${productId} 无新增数据，跳过更新`)
       }
 
-      // 6. 提交推荐系统反馈
-      if (modelDecisionId) {
-        try {
-          await fetch('http://localhost:3000/api/recommend/feedback', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              decisionId: modelDecisionId,
-              accepted: true,
-              bucket: 'fine',
-              notes: `竞品分析成功，新增卖点${addedSellingPoints}个`
-            })
+      // 额外：将本次痛点分析结果保存到 product_pain_points 表，便于历史追溯/统计
+      try {
+        if (Array.isArray(painPoints) && painPoints.length > 0) {
+          await prisma.productPainPoint.create({
+            data: {
+              productId,
+              platform: 'ai',
+              productName: product.name || '',
+              painPoints: JSON.stringify(painPoints),
+              frequency: painPoints.length,
+              // 预留字段，后续可填入更细的AI分析结果
+              aiAnalysis: JSON.stringify({
+                source: 'competitor-analysis',
+                model: aiModel || 'auto',
+                modelDecisionId: modelDecisionId || undefined,
+                promptDecisionId: promptDecisionId || undefined
+              })
+            }
           })
-        } catch (e) {
-          console.error('提交模型反馈失败:', e)
         }
+      } catch (e) {
+        console.warn('[API] 保存痛点分析记录失败（不影响主流程）:', e)
       }
 
-      if (promptDecisionId) {
+      // 4. 提交推荐系统反馈（非阻塞 + 超时保护 + 相对路径）
+      const postFeedback = async (decisionId: string, notes: string) => {
         try {
-          await fetch('http://localhost:3000/api/recommend/feedback', {
+          const controller = new AbortController()
+          const t = setTimeout(() => controller.abort(), 1000)
+          await fetch('/api/recommend/feedback', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              decisionId: promptDecisionId,
-              accepted: true,
-              bucket: 'fine',
-              notes: `Prompt执行成功，提取${addedSellingPoints}个卖点`
-            })
-          })
-        } catch (e) {
-          console.error('提交Prompt反馈失败:', e)
-        }
+            body: JSON.stringify({ decisionId, notes, eventType: 'analysis_complete' }),
+            signal: controller.signal
+          }).catch(() => {})
+          clearTimeout(t)
+        } catch {}
       }
+      if (modelDecisionId) postFeedback(modelDecisionId, `竞品分析成功，新增卖点${addedSellingPoints}个，痛点${addedPainPoints}个`)
+      if (promptDecisionId) postFeedback(promptDecisionId, `Prompt执行成功，提取${addedSellingPoints}个卖点、${addedPainPoints}个痛点`)
 
       return NextResponse.json({
         success: true,
         data: {
           productId,
           addedSellingPoints,
-          addedPainPoints: 0, // 暂不处理痛点
-          sellingPoints,
-          targetAudience: targetAudience || null
+          addedPainPoints,
+          sellingPoints: existingSellingPointsList, // 返回完整的卖点列表，而不是新增的
+          painPoints: existingPainPoints, // 返回完整的痛点列表
+          targetAudience: targetAudience || null, // 使用提取的目标受众字符串
+          analysisMetadata: analysisResult.metadata
         }
       })
     }
@@ -462,14 +458,72 @@ ${normalizedCompetitorText || '（见图片）'}
       )
     }
 
+    // 使用新的分析架构处理URL输入
+    const competitorService = createCompetitorAnalysisService()
+    
     let result
 
     if (url) {
-      // 单个URL分析
-      result = await competitorService.analyzeCompetitor(url)
+      // 单个URL分析（直接调用Contract）
+      const analysisResult = await runCompetitorContract({
+        input: {
+          rawText: `竞品链接: ${url}`,
+          images: undefined
+        },
+        needs: {
+          vision: false,
+          search: false,
+          streaming: false
+        },
+        policy: {
+          maxConcurrency: 3,
+          timeoutMs: 30000,
+          allowFallback: false
+        },
+        customPrompt: undefined,
+        context: {
+          productName: '',
+          category: '',
+          painPoints: []
+        }
+      })
+
+      // analysisResult 已经是 CompetitorOutput 类型，直接返回
+      result = analysisResult
     } else if (urls && Array.isArray(urls)) {
-      // 批量URL分析
-      result = await competitorService.batchAnalyzeCompetitors(urls)
+      // 批量URL分析（直接调用Contract）
+      const analysisResults = await Promise.all(
+        urls.map(async (urlItem) => {
+          try {
+            return await runCompetitorContract({
+              input: {
+                rawText: `竞品链接: ${urlItem}`,
+                images: undefined
+              },
+              needs: {
+                vision: false,
+                search: false,
+                streaming: false
+              },
+              policy: {
+                maxConcurrency: 3,
+                timeoutMs: 30000,
+                allowFallback: false
+              },
+              customPrompt: undefined,
+              context: {
+                productName: '',
+                category: '',
+                painPoints: []
+              }
+            })
+          } catch {
+            return null
+          }
+        })
+      )
+
+      result = analysisResults.filter(Boolean)
     }
 
     return NextResponse.json({
@@ -477,7 +531,7 @@ ${normalizedCompetitorText || '（见图片）'}
       data: result
     })
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Competitor analysis failed:', error)
     return NextResponse.json(
       { 
@@ -502,10 +556,52 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const results = await competitorService.batchAnalyzeCompetitors(urls)
+    // 批量URL分析（直接调用Contract）
+    const analysisResults = await Promise.all(
+      urls.map(async (url) => {
+        try {
+          const analysisResult = await runCompetitorContract({
+            input: {
+              rawText: `竞品链接: ${url}`,
+              images: undefined
+            },
+            needs: {
+              vision: false,
+              search: false,
+              streaming: false
+            },
+            policy: {
+              maxConcurrency: 3,
+              timeoutMs: 30000,
+              allowFallback: false
+            },
+            customPrompt: undefined,
+            context: {
+              productName: '',
+              category: '',
+              painPoints: []
+            }
+          })
+          return analysisResult
+        } catch {
+          return null
+        }
+      })
+    )
+
+    const results = analysisResults.filter(Boolean)
     
-    // 比较竞品
-    const comparison = await competitorService.compareCompetitors(results)
+    // 简单的竞品比较（基于分析结果）
+    const comparison = {
+      totalCompetitors: results.length,
+      commonSellingPoints: findCommonElements(
+        results.map((r: { combinedInsights?: { sellingPoints?: string[] } }) => r.combinedInsights?.sellingPoints || [])
+      ),
+      commonPainPoints: findCommonElements(
+        results.map((r: { combinedInsights?: { painPoints?: string[] } }) => r.combinedInsights?.painPoints || [])
+      ),
+      averageConfidence: results.reduce((sum: number, r: { confidence?: number }) => sum + (r.confidence || 0), 0) / results.length
+    }
 
     return NextResponse.json({
       success: true,
@@ -515,7 +611,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Competitor comparison failed:', error)
     return NextResponse.json(
       { 
@@ -525,4 +621,14 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+// 辅助方法：查找共同元素
+function findCommonElements(arrays: string[][]): string[] {
+  if (arrays.length === 0) return []
+  
+  const firstArray = arrays[0]
+  return firstArray.filter(item => 
+    arrays.every(arr => arr.includes(item))
+  )
 }

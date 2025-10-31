@@ -1,4 +1,4 @@
-import { VideoGenerationProvider } from './VideoGenerationProvider'
+import type { VideoGenerationProvider } from './VideoGenerationProvider'
 
 class Registry {
   private providers: Map<string, VideoGenerationProvider> = new Map()

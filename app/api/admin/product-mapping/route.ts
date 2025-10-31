@@ -1,7 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
-const prisma = new PrismaClient()
+// 定义状态类型
+type MappingStatus = 'pending' | 'confirmed' | 'rejected'
+
 
 // 获取待确认的商品映射
 export async function GET(request: NextRequest) {
@@ -12,7 +15,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
 
     const mappings = await prisma.productMapping.findMany({
-      where: { status: status as any },
+      where: { status: status as MappingStatus },
       include: {
         product: true
       },
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
     })
 
     const total = await prisma.productMapping.count({
-      where: { status: status as any }
+      where: { status: status as MappingStatus }
     })
 
     return NextResponse.json({
@@ -100,7 +103,7 @@ export async function PUT(request: NextRequest) {
     const mapping = await prisma.productMapping.update({
       where: { id },
       data: {
-        status: status as any,
+        status: status as MappingStatus,
         confirmedAt: new Date(),
         confirmedBy
       }

@@ -19,7 +19,7 @@
 n8n Video AI (Next.js 14 全栈应用)
 ├── 前端: Next.js App Router + React + Tailwind
 ├── 后端: Next.js API Routes (Node.js Serverless)
-├── 数据库: SQLite (开发) → PostgreSQL (生产)
+├── 数据库: PostgreSQL（开发与生产统一）
 ├── ORM: Prisma
 └── 第三方服务:
     ├── OpenAI API
@@ -31,9 +31,8 @@ n8n Video AI (Next.js 14 全栈应用)
 
 ### ⚠️ 关键问题识别
 
-1. **数据库问题**
-   - ❌ SQLite 不适合云部署（无持久化、无并发支持）
-   - ✅ 需要迁移到 PostgreSQL/MySQL
+1. **数据库**
+   - ✅ 统一使用 PostgreSQL（持久化、并发友好、可观测性好）
 
 2. **安全问题**
    - ❌ 硬编码管理员凭证在代码中

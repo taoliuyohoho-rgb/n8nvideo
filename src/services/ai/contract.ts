@@ -1,4 +1,5 @@
-import { callModel, ModelNeeds, CallPolicy } from './rules'
+import type { ModelNeeds, CallPolicy } from './rules';
+import { callModelLegacy as callModel } from './rules'
 
 export type SchemaValidator<T> = (text: string) => T | null
 

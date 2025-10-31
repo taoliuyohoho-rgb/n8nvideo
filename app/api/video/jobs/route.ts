@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { withTraceId } from '@/src/middleware/traceId'
 import { createApiLogger } from '@/src/services/logger/Logger'
 import { taskService } from '@/src/services/task/TaskService'
 
-const prisma = new PrismaClient()
 
 /**
  * 视频任务创建 API

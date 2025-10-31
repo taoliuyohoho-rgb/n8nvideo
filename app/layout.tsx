@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 // Avoid network fetch for Google Fonts in server build; fallback to system font
 import './globals.css'
 import { Toaster } from 'sonner'
+import { QueryProvider } from '@/src/providers/QueryProvider'
 
 const inter = { className: 'font-sans' } as any
 
@@ -18,10 +19,12 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className={inter.className}>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-          {children}
-        </div>
-        <Toaster />
+        <QueryProvider>
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+            {children}
+          </div>
+          <Toaster />
+        </QueryProvider>
       </body>
     </html>
   )

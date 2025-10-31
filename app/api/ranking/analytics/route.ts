@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { TuningAnalyticsService } from '@/src/services/analytics/TuningAnalyticsService'
 
 const analyticsService = new TuningAnalyticsService({})
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     const { timeRange, level, levelId } = await request.json()
 
-    if (!timeRange || !timeRange.start || !timeRange.end) {
+    if (!timeRange?.start || !timeRange.end) {
       return NextResponse.json(
         { error: 'Time range is required' },
         { status: 400 }

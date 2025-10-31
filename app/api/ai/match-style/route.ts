@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { recommendRank } from '@/src/services/recommendation/recommend'
 import '@/src/services/recommendation/index'
 
-const prisma = new PrismaClient()
 
 export async function POST(request: NextRequest) {
   try {

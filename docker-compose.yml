@@ -1,18 +1,54 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=n8nvideo
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 数据库初始化服务（首次部署时运行一次）
+  init-db:
+    build: .
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/n8nvideo?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./prisma:/app/prisma
+      - ./scripts:/app/scripts
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && echo '✅ 数据库迁移完成。运行 npm run db:seed 初始化种子数据（可选）'"
+    restart: "no"
+    profiles:
+      - init  # 使用 profile，默认不运行
+
   app:
     build: .
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:./prisma/prod.db
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/n8nvideo?schema=public
       - NEXTAUTH_SECRET=your-production-secret-key
       - NEXTAUTH_URL=http://localhost:3000
     volumes:
       - ./prisma:/app/prisma
       - ./credentials:/app/credentials
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
@@ -32,3 +68,6 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+
+volumes:
+  db-data:

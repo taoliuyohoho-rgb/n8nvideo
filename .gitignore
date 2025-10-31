@@ -103,3 +103,4 @@ Thumbs.db
 credentials/
 *.pem
 *.key
+.env.local.backup.*

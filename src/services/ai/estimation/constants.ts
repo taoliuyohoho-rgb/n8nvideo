@@ -2,7 +2,7 @@
  * 预估模型 (Estimation Model) - 常量配置
  */
 
-import { ExploreConfig, ScoringWeights } from './types';
+import type { ExploreConfig, ScoringWeights } from './types';
 
 // ========== 默认值 ==========
 

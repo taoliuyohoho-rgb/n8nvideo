@@ -63,17 +63,41 @@ export function ProductAnalysis({ productId, onSuccess }: ProductAnalysisProps) 
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
-        const response = await fetch(`/api/product/analyze?productId=${productId}`);
+        const response = await fetch('/api/competitor/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productId,
+            input: '',
+            images: []
+          })
+        });
         const data = await response.json();
         
         if (data.success) {
-          setRecommendations(data.data);
+          const recommendations = {
+            modelCandidates: data.data.models?.topK?.map((item: any) => ({
+              id: item.id,
+              title: item.title,
+              score: item.fineScore || item.coarseScore || 0,
+              reason: item.summary || '推荐模型',
+              type: 'model'
+            })) || [],
+            promptCandidates: data.data.prompts?.topK?.map((item: any) => ({
+              id: item.id,
+              name: item.title,
+              score: item.fineScore || item.coarseScore || 0,
+              reason: item.summary || '推荐Prompt',
+              type: 'prompt'
+            })) || []
+          };
+          setRecommendations(recommendations);
           // 默认选择第一个推荐
-          if (data.data.modelCandidates.length > 0) {
-            setChosenModelId(data.data.modelCandidates[0].id);
+          if (recommendations.modelCandidates.length > 0) {
+            setChosenModelId(recommendations.modelCandidates[0].id);
           }
-          if (data.data.promptCandidates.length > 0) {
-            setChosenPromptId(data.data.promptCandidates[0].id);
+          if (recommendations.promptCandidates.length > 0) {
+            setChosenPromptId(recommendations.promptCandidates[0].id);
           }
         }
       } catch (err) {
@@ -127,14 +151,14 @@ export function ProductAnalysis({ productId, onSuccess }: ProductAnalysisProps) 
     setResult(null);
 
     try {
-      const response = await fetch('/api/product/analyze', {
+      const response = await fetch('/api/competitor/parse', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           productId,
-          competitorContent: competitorContent.trim() || undefined,
+          input: competitorContent.trim() || undefined,
           images: images.length > 0 ? images : undefined,
           isUrl,
           chosenModelId: chosenModelId || undefined,
@@ -143,10 +167,27 @@ export function ProductAnalysis({ productId, onSuccess }: ProductAnalysisProps) 
       });
 
       const data = await response.json();
-      setResult(data);
-
+      
       if (data.success) {
-        onSuccess?.(data.data);
+        // 适配新的API响应格式
+        const analysisData = data.data;
+        const result = {
+          success: true,
+          data: {
+            sellingPoints: analysisData.combinedInsights?.sellingPoints || [],
+            painPoints: analysisData.combinedInsights?.painPoints || [],
+            targetAudience: analysisData.combinedInsights?.targetAudience || '',
+            modelUsed: analysisData.aiModelUsed || 'unknown',
+            promptUsed: analysisData.promptUsed || 'unknown',
+            duplicates: {
+              sellingPoints: [],
+              painPoints: [],
+              targetAudience: []
+            }
+          }
+        };
+        setResult(result);
+        onSuccess?.(result.data);
       } else {
         setError(data.error || '分析失败');
       }

@@ -1,4 +1,4 @@
-import { PluginConfig } from '../types'
+import type { PluginConfig } from '../types'
 
 export interface AppConfig {
   database: DatabaseConfig
@@ -117,7 +117,7 @@ export class ConfigFactory {
   static createFromEnv(): AppConfig {
     return {
       database: {
-        url: process.env.DATABASE_URL || 'file:./dev.db'
+        url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/n8nvideo?schema=public'
       },
       redis: {
         url: process.env.REDIS_URL || ''
@@ -153,7 +153,7 @@ export class ConfigFactory {
   static createDefault(): AppConfig {
     return {
       database: {
-        url: 'file:./dev.db'
+        url: 'postgresql://postgres:postgres@localhost:5432/n8nvideo?schema=public'
       },
       redis: {
         url: ''

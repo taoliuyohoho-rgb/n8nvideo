@@ -1,6 +1,6 @@
-import { Service, HealthStatus, Metrics } from '../../core/types'
-import { EventBus } from '../../core/events/EventBus'
-import { PluginManager } from '../../core/plugins/PluginManager'
+import type { Service, HealthStatus, Metrics } from '../../core/types'
+import type { EventBus } from '../../core/events/EventBus'
+import type { PluginManager } from '../../core/plugins/PluginManager'
 
 export interface VideoConfig {
   templateId: string

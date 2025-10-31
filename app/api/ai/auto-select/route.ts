@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import fs from 'fs'
 import path from 'path'
 
-const prisma = new PrismaClient()
 
 // AI模型验证状态文件
 const VERIFIED_MODELS_FILE = path.join(process.cwd(), 'verified-models.json')

@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 
 // GET /api/admin/prompts - 查询 Prompt 模板（支持通过id查询单个或列表查询）
 export async function GET(request: NextRequest) {
@@ -22,9 +22,27 @@ export async function GET(request: NextRequest) {
           { status: 404 }
         );
       }
+      
+      // 解析 variables JSON 字符串为数组
+      let variables = [];
+      if (prompt.variables) {
+        try {
+          variables = JSON.parse(prompt.variables);
+        } catch (error) {
+          console.error('解析 variables JSON 失败:', prompt.variables, error);
+          if (typeof prompt.variables === 'string') {
+            variables = prompt.variables.split(',').map(v => v.trim()).filter(v => v);
+          }
+        }
+      }
+      const parsedPrompt = {
+        ...prompt,
+        variables
+      };
+      
       return NextResponse.json({
         success: true,
-        template: prompt
+        template: parsedPrompt
       });
     }
 
@@ -44,9 +62,29 @@ export async function GET(request: NextRequest) {
       ]
     });
 
+    // 解析所有 prompts 的 variables JSON 字符串为数组
+    const parsedPrompts = prompts.map(prompt => {
+      let variables = [];
+      if (prompt.variables) {
+        try {
+          // 尝试解析 JSON
+          variables = JSON.parse(prompt.variables);
+        } catch (error) {
+          // 如果不是有效的 JSON，尝试按逗号分割
+          if (typeof prompt.variables === 'string') {
+            variables = prompt.variables.split(',').map(v => v.trim()).filter(v => v);
+          }
+        }
+      }
+      return {
+        ...prompt,
+        variables
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: prompts
+      data: parsedPrompts
     });
   } catch (error: any) {
     console.error('获取Prompt模板失败:', error);
@@ -90,9 +128,26 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // 解析 variables JSON 字符串为数组
+    let parsedVariables = [];
+    if (prompt.variables) {
+      try {
+        parsedVariables = JSON.parse(prompt.variables);
+      } catch (error) {
+        console.error('解析 variables JSON 失败:', prompt.variables, error);
+        if (typeof prompt.variables === 'string') {
+          parsedVariables = prompt.variables.split(',').map(v => v.trim()).filter(v => v);
+        }
+      }
+    }
+    const parsedPrompt = {
+      ...prompt,
+      variables: parsedVariables
+    };
+
     return NextResponse.json({
       success: true,
-      data: prompt
+      data: parsedPrompt
     });
   } catch (error: any) {
     console.error('创建Prompt模板失败:', error);
@@ -137,9 +192,26 @@ export async function PUT(request: NextRequest) {
       data: updateData
     });
 
+    // 解析 variables JSON 字符串为数组
+    let parsedVariables = [];
+    if (prompt.variables) {
+      try {
+        parsedVariables = JSON.parse(prompt.variables);
+      } catch (error) {
+        console.error('解析 variables JSON 失败:', prompt.variables, error);
+        if (typeof prompt.variables === 'string') {
+          parsedVariables = prompt.variables.split(',').map(v => v.trim()).filter(v => v);
+        }
+      }
+    }
+    const parsedPrompt = {
+      ...prompt,
+      variables: parsedVariables
+    };
+
     return NextResponse.json({
       success: true,
-      data: prompt
+      data: parsedPrompt
     });
   } catch (error: any) {
     console.error('更新Prompt模板失败:', error);

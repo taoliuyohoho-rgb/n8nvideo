@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { VideoAnalysisService } from '@/src/services/video/VideoAnalysisService'
 
 const videoAnalysisService = new VideoAnalysisService({

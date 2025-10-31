@@ -3,11 +3,10 @@
  * 基于段位指标与更丰富特征的精细排序
  */
 
-import { PrismaClient } from '@prisma/client';
-import { ModelRecord, TaskInput, ContextInput, SegmentMetrics, ScoringWeights } from './types';
+import { prisma } from '@/lib/prisma';
+import type { ModelRecord, TaskInput, ContextInput, SegmentMetrics, ScoringWeights } from './types';
 import { DEFAULT_FINE_WEIGHTS, buildSegmentKey } from './constants';
 
-const prisma = new PrismaClient();
 
 /**
  * 获取段位指标（24小时内）
@@ -115,7 +114,7 @@ export async function fineRank(
 
   const fineScoredPromises = coarseResults.map(async ({ model, score: coarseScore, features: coarseFeatures }) => {
     // 获取段位指标（暂时用模型ID，实际需entity_index映射）
-    const segmentMetrics = await getSegmentMetrics(model.id, segmentKey);
+    const segmentMetrics = await getSegmentMetrics(model.id, segmentKey) || undefined as any;
     
     const fineFeatures = computeFineFeatureVector(model, task, coarseFeatures, segmentMetrics);
     const fineScore = linearScore(fineFeatures, weights);

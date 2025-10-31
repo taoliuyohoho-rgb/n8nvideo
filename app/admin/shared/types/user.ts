@@ -10,6 +10,11 @@ export interface User {
   isActive: boolean
   createdAt: string
   password?: string
+  organizationId?: string | null
+  organization?: {
+    id: string
+    name: string
+  }
   _count: {
     videos: number
   }

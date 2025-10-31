@@ -2,903 +2,362 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ProductAnalysis } from '@/components/ProductAnalysis'
-import VideoGenerationPRD from '@/components/VideoGenerationPRD'
-import { 
-  BarChart3, 
-  Video, 
-  Package, 
-  Settings, 
-  LogOut, 
-  User,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  Shield,
-  Users,
-  Database,
-  Home,
-  History,
-  Upload,
-  Search,
-  Bell,
-  ChevronDown,
-  Plus,
-  Eye,
-  Download,
-  Trash2,
-  Play,
-  FileText,
-  Image,
-  Link,
-  Brain
-} from 'lucide-react'
-import { DateRangePicker } from '@/components/ui/date-picker'
-
-interface User {
-  id: string
-  email: string
-  name: string
-  role: string
-  isActive: boolean
-  createdAt: string
-}
+import { HomeContent } from './components/HomeContent'
+import { ProductManagement } from '@/app/admin/features/products/ProductManagement'
+import { HistoryContent } from './components/HistoryContent'
+import { Sidebar } from './components/Sidebar'
+import { VideoGenerationWorkflow } from '@/components/video-generation'
+import { useDashboardData } from './hooks/useDashboardData'
+import { useCategoryConfig } from '@/app/admin/hooks/useCategoryConfig'
+import type { ActiveTab } from './types'
+import type { BusinessProduct } from '@/types/business'
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
-  
-  // 从URL恢复tab状态
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      return params.get('tab') || localStorage.getItem('dashboardActiveTab') || 'home'
-    }
-    return 'home'
-  })
-  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-    from: undefined,
-    to: undefined
-  })
-  const [users, setUsers] = useState<User[]>([])
-  const [selectedUser, setSelectedUser] = useState<string>('all')
-  const [products, setProducts] = useState<any[]>([])
-  const [productCategories, setProductCategories] = useState<string[]>([])
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [filteredProducts, setFilteredProducts] = useState<any[]>([])
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
-  const [dashboardStats, setDashboardStats] = useState<any>(null)
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState<ActiveTab>('home')
+  const [isClient, setIsClient] = useState(false)
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  
+  // 使用统一的类目配置 Hook
+  const {
+    categories: managedCategories,
+    subcategories: managedSubcategories,
+    countries: managedCountries,
+    loading: categoriesLoading,
+    error: categoriesError,
+    refreshConfig: refreshCategoriesConfig,
+    updateCategories,
+    updateSubcategories,
+    updateCountries
+  } = useCategoryConfig()
+  
+  const {
+    user,
+    loading,
+    dashboardStats,
+    products,
+    productCategories,
+    filteredProducts,
+    setFilteredProducts,
+    users,
+    history
+  } = useDashboardData()
 
-  // 保存tab状态到URL和localStorage
+  // 初始化客户端状态并恢复上次选中的标签页
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('dashboardActiveTab', activeTab)
-      const params = new URLSearchParams(window.location.search)
-      params.set('tab', activeTab)
-      // 使用replaceState避免创建新历史记录
-      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`)
+    setIsClient(true)
+    // 从 localStorage 恢复上次选中的标签页
+    const savedTab = localStorage.getItem('dashboard-active-tab')
+    if (savedTab && ['home', 'video', 'products', 'history', 'settings'].includes(savedTab)) {
+      setActiveTab(savedTab as ActiveTab)
     }
-  }, [activeTab])
-
-  useEffect(() => {
-    // 检查用户登录状态
-    const userData = localStorage.getItem('user')
-    if (!userData) {
-      router.push('/login')
-      return
-    }
-
-    const userInfo = JSON.parse(userData)
-    setUser(userInfo)
-    setLoading(false)
-  }, [router])
-
-  // 获取用户列表
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const response = await fetch('/api/admin/users')
-        const result = await response.json()
-        if (result.success) {
-          setUsers(result.data)
-        }
-      } catch (error) {
-        console.error('获取用户列表失败:', error)
-      }
-    }
-
-    fetchUsers()
   }, [])
 
-  // 获取统计数据
+  // 当标签页改变时，保存到 localStorage
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await fetch('/api/admin/simple-stats')
-        const result = await response.json()
-        if (result.success) {
-          setDashboardStats(result.data)
-        }
-      } catch (error) {
-        console.error('获取统计数据失败:', error)
-      }
+    if (isClient) {
+      localStorage.setItem('dashboard-active-tab', activeTab)
     }
+  }, [activeTab, isClient])
 
-    fetchStats()
-  }, [])
+  // 通知管理
+  const showSuccess = (message: string) => {
+    setNotification({ type: 'success', message })
+    setTimeout(() => setNotification(null), 3000)
+  }
 
-  // 获取商品数据
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const response = await fetch('/api/products')
-        const result = await response.json()
-        if (result.success) {
-          setProducts(result.data.products)
-          setProductCategories(result.data.categories)
-          setFilteredProducts(result.data.products)
-        }
-      } catch (error) {
-        console.error('获取商品列表失败:', error)
-      }
-    }
+  const showError = (message: string) => {
+    setNotification({ type: 'error', message })
+    setTimeout(() => setNotification(null), 3000)
+  }
 
-    fetchProducts()
-  }, [])
-
-  // 根据类目筛选商品
-  useEffect(() => {
-    if (selectedCategory === 'all') {
-      setFilteredProducts(products)
+  // 商品操作
+  const handleSelectProduct = (productId: string, selected: boolean) => {
+    if (selected) {
+      setSelectedProducts(prev => [...prev, productId])
     } else {
-      const filtered = products.filter(product => product.category === selectedCategory)
-      setFilteredProducts(filtered)
+      setSelectedProducts(prev => prev.filter(id => id !== productId))
     }
-  }, [selectedCategory, products])
+  }
 
+  const handleSelectAll = (selected: boolean) => {
+    if (selected) {
+      setSelectedProducts(products.map(p => p.id))
+    } else {
+      setSelectedProducts([])
+    }
+  }
+
+  const handleRefresh = async () => {
+    try {
+      const response = await fetch('/api/products')
+      const result = await response.json()
+      if (result.success) {
+        window.location.reload() // 刷新页面以重新加载商品数据
+        showSuccess('商品数据已刷新')
+      }
+    } catch (error) {
+      showError('刷新失败')
+    }
+  }
+
+  const handleProductSave = async (productData: Omit<BusinessProduct, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData)
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        showSuccess('商品添加成功')
+        await handleRefresh()
+      } else {
+        showError(result.error || '添加失败')
+      }
+    } catch (error) {
+      showError('添加失败，请重试')
+    }
+  }
+
+  const handleProductUpdate = async (productId: string, productData: Partial<Omit<BusinessProduct, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData)
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        showSuccess('商品更新成功')
+        await handleRefresh()
+      } else {
+        showError(result.error || '更新失败')
+      }
+    } catch (error) {
+      showError('更新失败，请重试')
+    }
+  }
+
+  const handleDeleteProduct = async (productId: string) => {
+    const product = products.find(p => p.id === productId)
+    if (!product) return
+
+    const confirmed = window.confirm(`确定要删除商品"${product.name}"吗？此操作不可撤销。`)
+    if (!confirmed) return
+
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'DELETE'
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        showSuccess('删除成功')
+        setSelectedProducts(prev => prev.filter(id => id !== productId))
+        await handleRefresh()
+      } else {
+        showError(result.error || '删除失败')
+      }
+    } catch (error) {
+      showError('删除失败，请重试')
+    }
+  }
+
+  const handleBulkUploadFile = async (file: File) => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('type', 'products')
+
+      const response = await fetch('/api/admin/bulk-upload', {
+        method: 'POST',
+        body: formData
+      })
+      const result = await response.json()
+      
+      if (result.success) {
+        showSuccess(`批量上传成功，处理了 ${result.processed} 条记录`)
+        await handleRefresh()
+      } else {
+        showError(result.error || '批量上传失败')
+      }
+    } catch (error) {
+      showError('批量上传失败，请重试')
+    }
+  }
+
+  // 退出登录
   const handleLogout = () => {
     localStorage.removeItem('user')
     router.push('/login')
   }
 
-  if (loading) {
+  // 如果不在客户端或者正在加载，显示加载状态
+  if (!isClient || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">加载中...</p>
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 text-lg">加载中...</p>
         </div>
       </div>
     )
   }
 
   if (!user) {
-    return null
+    // 如果没有用户数据，显示提示信息并跳转到登录页面
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">请先登录</h2>
+          <p className="text-gray-600 mb-6">您需要登录才能访问此页面</p>
+          <button 
+            onClick={() => router.push('/login')}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            前往登录
+          </button>
+        </div>
+      </div>
+    )
   }
 
-  // 首页内容组件
-  const HomeContent = () => (
-    <div className="space-y-6">
-      {/* 欢迎区域 */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">欢迎回来，{user.name}！</h1>
-          <p className="text-gray-600 mt-1">首页</p>
-        </div>
-        {user.role === 'admin' && (
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-            onClick={() => window.open('/admin', '_blank')}
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            管理后台
-          </Button>
-        )}
-      </div>
-
-      {/* 数据大盘 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-white rounded-lg shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">已制作视频</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {dashboardStats?.dashboard?.totalVideos || 0}
-                </p>
-                <div className="flex items-center mt-1">
-                  <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                  <span className="text-sm text-green-600">
-                    本月新增 {dashboardStats?.videos?.monthlyVideos || 0}
-                  </span>
-                </div>
-              </div>
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Video className="h-6 w-6 text-blue-600" />
-              </div>
+  // 渲染内容区域
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'home':
+        return <HomeContent user={user} dashboardStats={dashboardStats} />
+      case 'video':
+        return (
+          <VideoGenerationWorkflow
+            onComplete={(result) => {
+              console.log('视频生成完成:', result)
+              showSuccess('视频生成完成！')
+            }}
+            onError={(error) => {
+              console.error('视频生成错误:', error)
+              showError(error)
+            }}
+          />
+        )
+      case 'products':
+        return (
+          <ProductManagement
+            products={products}
+            selectedProducts={selectedProducts}
+            onSelectProduct={handleSelectProduct}
+            onSelectAll={handleSelectAll}
+            onRefresh={handleRefresh}
+            onBulkUpload={() => {}}
+            onAdd={() => {}}
+            onAnalyze={() => {}}
+            onEdit={(product) => {}}
+            onDelete={handleDeleteProduct}
+            onProductSave={handleProductSave}
+            onProductUpdate={handleProductUpdate}
+            onBulkUploadFile={handleBulkUploadFile}
+            categories={managedCategories}
+            subcategories={managedSubcategories}
+            countries={managedCountries}
+            onCategoriesChange={updateCategories}
+            onSubcategoriesChange={updateSubcategories}
+            onCountriesChange={updateCountries}
+            userRole={user.role}
+          />
+        )
+      case 'history':
+        return <HistoryContent history={history} />
+      case 'settings':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">个人设置</h2>
+              <p className="text-gray-600">管理您的账户设置和偏好</p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white rounded-lg shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">素材总数</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {dashboardStats?.dashboard?.totalProducts || 0}
-                </p>
-                <div className="flex items-center mt-1">
-                  <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                  <span className="text-sm text-green-600">商品库总数</span>
-                </div>
-              </div>
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Image className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white rounded-lg shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">使用天数</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {dashboardStats?.dashboard?.usageDays || 0}
-                </p>
-                <p className="text-sm text-gray-500">系统运行天数</p>
-              </div>
-              <div className="p-3 bg-teal-100 rounded-lg">
-                <CheckCircle className="h-6 w-6 text-teal-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white rounded-lg shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">制作效率</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {dashboardStats?.dashboard?.efficiency || 0}%
-                </p>
-                <div className="flex items-center mt-1">
-                  <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                  <span className="text-sm text-green-600" title={dashboardStats?.dashboard?.efficiencyNote}>
-                    {dashboardStats?.dashboard?.efficiencyNote}
-                  </span>
-                </div>
-              </div>
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <BarChart3 className="h-6 w-6 text-orange-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-
-      {/* 系统使用情况统计 */}
-      {user.role === 'admin' && (
-        <div className="space-y-6">
-          {/* 筛选器 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <BarChart3 className="h-5 w-5 mr-2" />
-                系统使用情况
-              </CardTitle>
-              <CardDescription>
-                查看系统内人员使用情况、视频生成统计和商品/风格分析
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* 日期筛选器 */}
-                <div>
-                  <Label htmlFor="date-filter">日期筛选</Label>
-                  <DateRangePicker
-                    dateRange={dateRange}
-                    onDateRangeChange={setDateRange}
-                    placeholder="选择日期范围"
-                    className="w-full"
-                  />
-                </div>
-
-                {/* 用户筛选 */}
-                <div>
-                  <Label htmlFor="user-filter">用户</Label>
-                  <Select value={selectedUser} onValueChange={setSelectedUser}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部用户</SelectItem>
-                      {users.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name} ({user.role === 'admin' ? '管理员' : '运营'})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* 商品筛选 */}
-                <div>
-                  <Label htmlFor="product-filter">商品</Label>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部商品</SelectItem>
-                      {productCategories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  
-                  {/* 商品多选列表 */}
-                  <div className="mt-2 max-h-32 overflow-y-auto border rounded p-2">
-                    {filteredProducts.map((product) => (
-                      <label key={product.id} className="flex items-center space-x-2 py-1">
-                        <input 
-                          type="checkbox" 
-                          className="rounded"
-                          checked={selectedProducts.includes(product.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedProducts([...selectedProducts, product.id])
-                            } else {
-                              setSelectedProducts(selectedProducts.filter(id => id !== product.id))
-                            }
-                          }}
-                        />
-                        <span className="text-sm">{product.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  
-                  {/* 全选/清空按钮 */}
-                  <div className="flex gap-2 mt-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setSelectedProducts(filteredProducts.map(p => p.id))}
-                    >
-                      全选
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setSelectedProducts([])}
-                    >
-                      清空
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 人员使用情况 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Users className="h-5 w-5 mr-2" />
-                  人员使用情况
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">活跃用户</span>
-                    <span className="font-semibold">{dashboardStats?.users?.activeUsers || 0}人</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">新增用户</span>
-                    <span className="font-semibold">{dashboardStats?.users?.newUsers || 0}人</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">管理员</span>
-                    <span className="font-semibold">{dashboardStats?.users?.adminCount || 0}人</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">普通用户</span>
-                    <span className="font-semibold">{(dashboardStats?.users?.operatorCount || 0) + (dashboardStats?.users?.viewerCount || 0)}人</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Video className="h-5 w-5 mr-2" />
-                  视频生成统计
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">总生成数</span>
-                    <span className="font-semibold">{dashboardStats?.videos?.totalVideos || 0}个</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">本月生成</span>
-                    <span className="font-semibold">{dashboardStats?.videos?.monthlyVideos || 0}个</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">成功率</span>
-                    <span className="font-semibold text-green-600">{dashboardStats?.videos?.successRate || 0}%</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">平均时长</span>
-                    <span className="font-semibold">{dashboardStats?.videos?.avgDuration || '0秒'}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* 商品/风格分析 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Package className="h-5 w-5 mr-2" />
-                  热门商品类别
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">电子产品</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-blue-600 h-2 rounded-full" style={{width: '75%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">45个</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">服装配饰</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-600 h-2 rounded-full" style={{width: '60%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">32个</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">生活用品</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-purple-600 h-2 rounded-full" style={{width: '40%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">28个</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">美妆护肤</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-pink-600 h-2 rounded-full" style={{width: '25%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">15个</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <FileText className="h-5 w-5 mr-2" />
-                  热门视频风格
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">科技感</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-blue-600 h-2 rounded-full" style={{width: '80%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">38个</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">时尚潮流</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-600 h-2 rounded-full" style={{width: '65%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">28个</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">温馨生活</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-purple-600 h-2 rounded-full" style={{width: '45%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">22个</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">简约商务</span>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-20 bg-gray-200 rounded-full h-2">
-                        <div className="bg-gray-600 h-2 rounded-full" style={{width: '30%'}}></div>
-                      </div>
-                      <span className="text-sm font-medium">18个</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {/* 普通用户功能入口 */}
-      {user.role !== 'admin' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="bg-white rounded-lg shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Upload className="h-5 w-5 mr-2" />
-                完善风格库
-              </CardTitle>
-              <CardDescription>
-                上传视频链接或视频文件，解析后充实风格库
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="text-lg font-semibold mb-4">账户信息</h3>
               <div className="space-y-4">
-                <Button 
-                  className="w-full"
-                  onClick={() => {
-                    const url = prompt('请输入视频链接：')
-                    if (url) {
-                      alert(`正在解析视频链接：${url}`)
-                      // 这里可以添加实际的视频解析逻辑
-                    }
-                  }}
-                >
-                  <Link className="h-4 w-4 mr-2" />
-                  上传视频链接
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={() => {
-                    const input = document.createElement('input')
-                    input.type = 'file'
-                    input.accept = 'video/*'
-                    input.onchange = (e) => {
-                      const file = (e.target as HTMLInputElement).files?.[0]
-                      if (file) {
-                        alert(`正在上传视频文件：${file.name}`)
-                        // 这里可以添加实际的文件上传逻辑
-                      }
-                    }
-                    input.click()
-                  }}
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  上传视频文件
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white rounded-lg shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Package className="h-5 w-5 mr-2" />
-                完善商品库
-              </CardTitle>
-              <CardDescription>
-                上传竞品信息，解析后充实商品卖点等信息
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <Button 
-                  className="w-full"
-                  onClick={() => {
-                    const info = prompt('请输入竞品信息（产品名称、价格、特点等）：')
-                    if (info) {
-                      alert(`正在分析竞品信息：${info}`)
-                      // 这里可以添加实际的竞品分析逻辑
-                    }
-                  }}
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  上传竞品信息
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={() => {
-                    const keyword = prompt('请输入搜索关键词：')
-                    if (keyword) {
-                      alert(`正在搜索竞品：${keyword}`)
-                      // 这里可以添加实际的搜索逻辑
-                    }
-                  }}
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  搜索竞品
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
-  )
-
-
-  // 历史记录内容组件
-  const HistoryContent = () => (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">历史记录</h1>
-        <p className="text-gray-600 mt-1">查看和管理您的生成记录</p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>生成历史</CardTitle>
-          <CardDescription>所有生成任务的记录和prompt</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="p-4 border rounded-lg">
-              <div className="flex justify-between items-start mb-3">
                 <div>
-                  <h3 className="font-medium">电磁炉产品展示视频</h3>
-                  <p className="text-sm text-gray-500">家居用品 • 2024-01-15 14:30</p>
-                  <div className="flex items-center space-x-4 mt-2">
-                    <Badge variant="outline">已完成</Badge>
-                    <span className="text-sm text-gray-500">30秒</span>
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700">用户名</label>
+                  <p className="mt-1 text-sm text-gray-900">{user.name}</p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      alert('查看详情：\n\n输入内容：电磁炉\n系统prompt：生成一个30秒的产品推广视频\n输出prompt：创建展示电磁炉功能的视频')
-                    }}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      if (confirm('确定要删除这个记录吗？')) {
-                        alert('记录已删除')
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              <div className="bg-gray-50 p-3 rounded text-sm">
-                <p className="font-medium text-gray-700 mb-2">输入内容：</p>
-                <p className="text-gray-600 mb-3">电磁炉，高效加热，多功能烹饪，智能触控</p>
-                
-                <p className="font-medium text-gray-700 mb-2">系统使用的prompt：</p>
-                <p className="text-gray-600 mb-3">生成一个30秒的产品推广视频，突出电磁炉的高效加热和多功能烹饪</p>
-                
-                <p className="font-medium text-gray-700 mb-2">最终输出的prompt：</p>
-                <p className="text-gray-600">创建一个展示电磁炉的视频，包含：1. 电磁炉外观展示 2. 加热速度演示 3. 多功能烹饪展示 4. 安全特性介绍，营销信息：新人-5RM；限时7折</p>
-              </div>
-            </div>
-
-            <div className="p-4 border rounded-lg">
-              <div className="flex justify-between items-start mb-3">
                 <div>
-                  <h3 className="font-medium">电磁炉多功能展示视频</h3>
-                  <p className="text-sm text-gray-500">家居用品 • 2024-01-15 11:20</p>
-                  <div className="flex items-center space-x-4 mt-2">
-                    <Badge variant="outline">已完成</Badge>
-                    <span className="text-sm text-gray-500">45秒</span>
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700">邮箱</label>
+                  <p className="mt-1 text-sm text-gray-900">{user.email}</p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      alert('查看详情：\n\n输入内容：电磁炉\n系统prompt：生成一个45秒的电磁炉展示视频\n输出prompt：创建展示电磁炉多功能和高效性的视频')
-                    }}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      if (confirm('确定要删除这个记录吗？')) {
-                        alert('记录已删除')
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">角色</label>
+                  <p className="mt-1 text-sm text-gray-900">{user.role}</p>
                 </div>
-              </div>
-              <div className="bg-gray-50 p-3 rounded text-sm">
-                <p className="font-medium text-gray-700 mb-2">输入内容：</p>
-                <p className="text-gray-600 mb-3">电磁炉，高效节能，安全可靠，易清洁</p>
-                
-                <p className="font-medium text-gray-700 mb-2">系统使用的prompt：</p>
-                <p className="text-gray-600 mb-3">生成一个45秒的电磁炉展示视频，突出高效节能和多功能性</p>
-                
-                <p className="font-medium text-gray-700 mb-2">最终输出的prompt：</p>
-                <p className="text-gray-600">创建一个展示电磁炉的视频，包含：1. 电磁炉外观展示 2. 加热速度演示 3. 多功能烹饪展示 4. 安全特性介绍，营销信息：新人-5RM；限时7折</p>
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
+        )
+      default:
+        return <HomeContent user={user} dashboardStats={dashboardStats} />
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 顶部导航 */}
-      <nav className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* 通知组件 */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
+          notification.type === 'success' 
+            ? 'bg-green-100 border border-green-400 text-green-700' 
+            : notification.type === 'error'
+            ? 'bg-red-100 border border-red-400 text-red-700'
+            : 'bg-blue-100 border border-blue-400 text-blue-700'
+        }`}>
+          <div className="flex items-center">
+            <span className="font-medium">{notification.message}</span>
+            <button
+              onClick={() => setNotification(null)}
+              className="ml-4 text-lg font-bold hover:opacity-70"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 顶部导航栏 */}
+      <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <div className="flex items-center space-x-4">
-                <Search className="h-5 w-5 text-gray-400" />
-                <input 
-                  type="text" 
-                  placeholder="搜索作品、素材..." 
-                  className="border-0 outline-none text-gray-900 placeholder-gray-500"
-                />
-              </div>
+              <h1 className="text-xl font-semibold text-gray-900">AI Video Generator</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm" className="relative">
-                <Bell className="h-5 w-5" />
-                <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></span>
-              </Button>
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                  <User className="h-4 w-4 text-gray-600" />
-                </div>
-                <span className="text-sm text-gray-700">{user.name}</span>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => {
-                    // 这里可以添加个人设置的下拉菜单或跳转到设置页面
-                    alert('个人设置功能')
-                  }}
-                >
-                  <Settings className="h-4 w-4 mr-1" />
-                  个人设置
-                  <ChevronDown className="h-4 w-4 ml-1" />
-                </Button>
+              <div className="text-sm text-gray-500">
+                欢迎，{user.name}
               </div>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* 主要内容区域 - 左侧tab + 右侧内容 */}
+      {/* 主要内容区域 */}
       <div className="flex h-[calc(100vh-64px)]">
         {/* 左侧导航栏 */}
-        <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-          <div className="p-4">
-            <h2 className="text-lg font-semibold text-gray-900">工作台</h2>
-          </div>
-          
-          {/* 导航菜单 */}
-          <nav className="flex-1 px-4 pb-4">
-            <div className="space-y-2">
-              <button
-                onClick={() => setActiveTab('home')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                  activeTab === 'home' 
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <Home className="h-5 w-5" />
-                <span>首页</span>
-              </button>
-              
-              <button
-                onClick={() => setActiveTab('video')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                  activeTab === 'video' 
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <Video className="h-5 w-5" />
-                <span>视频生成</span>
-              </button>
-              
-              <button
-                onClick={() => setActiveTab('history')}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                  activeTab === 'history' 
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <History className="h-5 w-5" />
-                <span>历史记录</span>
-              </button>
-              
-              {/* 未来可扩展的模块 */}
-              <div className="pt-4 border-t border-gray-200">
-                <p className="text-xs text-gray-500 px-3 py-2">即将推出</p>
-                <button
-                  disabled
-                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-gray-400 cursor-not-allowed"
-                >
-                  <Package className="h-5 w-5" />
-                  <span>商品信息管理</span>
-                </button>
-                <button
-                  disabled
-                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-gray-400 cursor-not-allowed"
-                >
-                  <Database className="h-5 w-5" />
-                  <span>订单管理</span>
-                </button>
-                <button
-                  disabled
-                  className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-gray-400 cursor-not-allowed"
-                >
-                  <TrendingUp className="h-5 w-5" />
-                  <span>进货管理</span>
-                </button>
-              </div>
-            </div>
-          </nav>
-        </div>
+        <Sidebar
+          user={user}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onLogout={handleLogout}
+        />
 
         {/* 右侧内容区域 */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-y-auto">
           <div className="p-6">
-            {activeTab === 'home' && <HomeContent />}
-            {activeTab === 'video' && <VideoGenerationPRD />}
-            {activeTab === 'history' && <HistoryContent />}
+            {renderContent()}
           </div>
         </div>
       </div>
     </div>
   )
 }
-

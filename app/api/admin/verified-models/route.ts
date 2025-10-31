@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
@@ -100,11 +101,11 @@ export async function GET(request: NextRequest) {
     } else {
       // 返回默认模型列表
       const defaultModels = [
-        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'Google', verified: false, status: 'unverified' },
-        { id: 'gpt-4', name: 'GPT-4', provider: 'OpenAI', verified: false, status: 'unverified' },
-        { id: 'claude-3-sonnet', name: 'Claude 3 Sonnet', provider: 'Anthropic', verified: false, status: 'unverified' },
+        { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'DeepSeek', verified: false, status: 'unverified' },
         { id: 'doubao-seed-1-6-lite', name: '豆包 Seed 1.6 Lite', provider: '字节跳动', verified: false, status: 'unverified' },
-        { id: 'deepseek-chat', name: 'DeepSeek Chat', provider: 'DeepSeek', verified: false, status: 'unverified' }
+        { id: 'doubao-pro-32k', name: '豆包 Pro 32K', provider: '字节跳动', verified: false, status: 'unverified' },
+        { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Experimental)', provider: 'Google', verified: false, status: 'unverified' },
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', verified: false, status: 'unverified' }
       ]
       
       return NextResponse.json({

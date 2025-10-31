@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 
 // GET /api/admin/recommendation/stats - 获取推荐系统统计数据
 export async function GET(request: NextRequest) {

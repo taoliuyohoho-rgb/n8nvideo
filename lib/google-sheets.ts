@@ -35,7 +35,7 @@ export async function fetchTemplatesFromSheet(): Promise<VideoTemplate[]> {
     const templates: VideoTemplate[] = []
 
     for (const row of rows) {
-      if (row[0] && row[0].startsWith('TMP')) { // 只处理模板行
+      if (row[0]?.startsWith('TMP')) { // 只处理模板行
         templates.push({
           templateId: row[0] || '',
           templateName: row[1] || '',

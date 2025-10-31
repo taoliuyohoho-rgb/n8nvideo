@@ -22,15 +22,15 @@ export async function chooseModel(needs: ModelNeeds, model: 'auto' | string): Pr
   // 路由优先级（可配置化）：视频生成 > 视觉/视频理解 > 搜索 > 文本
   if (needs.videoGeneration) {
     // 豆包视频生成（可在环境变量覆盖）
-    return process.env.DOUBAO_VIDEO_GEN_MODEL || 'Doubao-Seedance-1.0-pro'
+    return process.env.DOUBAO_VIDEO_GEN_MODEL || 'doubao-pro-32k'
   }
   if (needs.vision || needs.videoUnderstanding) {
-    // 豆包视觉理解优先；无则回退到 Gemini 视觉
-    return process.env.DOUBAO_VISION_MODEL || 'Doubao-Seed-1.6-vision'
+    // 豆包视觉理解优先；无则回退到 DeepSeek
+    return process.env.DOUBAO_VISION_MODEL || 'doubao-seed-1-6-lite'
   }
-  if (needs.search) return 'gemini-2.5-flash'
-  // 文本默认
-  return 'gemini-2.5-flash'
+  if (needs.search) return process.env.DEFAULT_TEXT_MODEL || 'deepseek-chat'
+  // 文本默认 - 使用 DeepSeek 作为主力模型（可用且无配额问题）
+  return process.env.DEFAULT_TEXT_MODEL || 'deepseek-chat'
 }
 
 // in-memory single-flight registry
@@ -53,7 +53,7 @@ export async function callModel(params: {
   
   // 根据任务类型确定需求
   const needs: ModelNeeds = {
-    vision: task.includes('persona') || task.includes('script'),
+    vision: task.includes('persona') || task.includes('video-script'),
     videoUnderstanding: task.includes('video'),
     search: evidenceMode,
   };
@@ -76,12 +76,12 @@ export async function callModel(params: {
     // 根据模型选择执行
     if (needs.vision && process.env.DOUBAO_API_KEY) {
       const { default: DoubaoAIService } = await import('./DoubaoAIService');
-      const doubao = new DoubaoAIService(process.env.DOUBAO_API_KEY as string);
+      const doubao = new DoubaoAIService(process.env.DOUBAO_API_KEY);
       const model = process.env.DOUBAO_VISION_MODEL_ID || process.env.DOUBAO_VISION_MODEL || 'doubao-seed-1-6-vision-250815';
       result = await doubao.generateVision(prompt, [], { model });
     } else if (needs.vision && process.env.DEEPSEEK_API_KEY) {
       const { default: DeepseekAIService } = await import('./DeepseekAIService');
-      const deepseek = new DeepseekAIService(process.env.DEEPSEEK_API_KEY as string);
+      const deepseek = new DeepseekAIService(process.env.DEEPSEEK_API_KEY);
       const content = evidenceMode ? `${prompt}\n\n证据模式：请基于提供的证据生成内容，不要臆造信息。` : prompt;
       result = await deepseek.generateText(content, { model: process.env.DEEPSEEK_VISION_MODEL || 'deepseek-vl' });
     } else {
@@ -159,7 +159,7 @@ export async function callModelLegacy(prompt: string, needs: ModelNeeds, policy:
   if (needs.vision && process.env.DOUBAO_API_KEY) {
     // 走豆包视觉：通过文本接口携带图片URL/提示词（简化方案）
     const { default: DoubaoAIService } = await import('./DoubaoAIService')
-    const doubao = new DoubaoAIService(process.env.DOUBAO_API_KEY as string)
+    const doubao = new DoubaoAIService(process.env.DOUBAO_API_KEY)
     // 优先使用模型ID，其次使用模型名，最后默认回退
     const model = process.env.DOUBAO_VISION_MODEL_ID || process.env.DOUBAO_VISION_MODEL || 'doubao-seed-1-6-vision-250815'
     try { console.log('[AI] Vision provider=doubao model=', model) } catch {}
@@ -169,7 +169,7 @@ export async function callModelLegacy(prompt: string, needs: ModelNeeds, policy:
   // 次优先：DeepSeek 视觉，如果配置了Key
   if (needs.vision && process.env.DEEPSEEK_API_KEY) {
     const { default: DeepseekAIService } = await import('./DeepseekAIService')
-    const deepseek = new DeepseekAIService(process.env.DEEPSEEK_API_KEY as string)
+    const deepseek = new DeepseekAIService(process.env.DEEPSEEK_API_KEY)
     const imageLines2 = (images || []).map(u => `证据图片：${u}`).join('\n')
     const content2 = `${prompt}\n\n${imageLines2}`
     const text2 = await deepseek.generateText(content2, { model: process.env.DEEPSEEK_VISION_MODEL || 'deepseek-vl' })

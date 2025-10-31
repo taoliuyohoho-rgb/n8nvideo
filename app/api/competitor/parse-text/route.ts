@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { aiExecutor } from '@/src/services/ai/AiExecutor'
 
-const prisma = new PrismaClient()
 
 /**
  * 竞品文本解析API

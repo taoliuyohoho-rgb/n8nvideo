@@ -2,7 +2,8 @@
  * 获取段位指标
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
 import { aggregateBySegment } from '@/src/services/ai/estimation/metrics';
 
 export async function GET(request: NextRequest) {

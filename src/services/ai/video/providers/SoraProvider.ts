@@ -1,4 +1,4 @@
-import { ProviderConfig, VideoGenerationParams, VideoGenerationProvider, VideoGenerationResult } from '../VideoGenerationProvider'
+import type { ProviderConfig, VideoGenerationParams, VideoGenerationProvider, VideoGenerationResult } from '../VideoGenerationProvider'
 
 export class SoraProvider implements VideoGenerationProvider {
   public readonly name = 'sora'

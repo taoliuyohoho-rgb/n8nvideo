@@ -3,7 +3,7 @@
  * 在Top-2/3内做小流量探索（ε-greedy）
  */
 
-import { ModelRecord, ExploreConfig } from './types';
+import type { ModelRecord, ExploreConfig } from './types';
 import { DEFAULT_EXPLORE_CONFIG, EXPLORE_EPSILON_MIN, EXPLORE_EPSILON_MAX } from './constants';
 
 /**

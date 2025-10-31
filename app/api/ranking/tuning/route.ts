@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { HierarchicalRankingService } from '@/src/services/ranking/HierarchicalRankingService'
 import { TuningAnalyticsService } from '@/src/services/analytics/TuningAnalyticsService'
 

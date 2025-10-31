@@ -1,11 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
-import { Scorer } from '../registry';
-import { RecommendRankRequest, CandidateItem } from '../types';
+import { poolCache } from '../cache';
+import type { Scorer } from '../registry';
+import type { RecommendRankRequest, CandidateItem } from '../types';
 import { DEFAULT_M_COARSE, DEFAULT_K_FINE } from '../constants';
 
-const prisma = new PrismaClient();
 
 function applyHardConstraints(model: any, req: RecommendRankRequest): boolean {
   // language
@@ -56,7 +56,14 @@ export const taskToModelScorer: Scorer = {
     const m = DEFAULT_M_COARSE;
     const k = DEFAULT_K_FINE;
 
-    const models = await prisma.estimationModel.findMany({ where: { status: 'active' } });
+    // 注意：模型数据应该在应用启动时已经同步到数据库
+    // 如果没有模型数据，请运行: npm run init-models
+    
+    const models = await poolCache.getOrSet(
+      'modelPool:active',
+      () => prisma.estimationModel.findMany({ where: { status: 'active' } }),
+      5 * 60 * 1000 // 5min TTL
+    );
     // 仅使用已验证的 provider 的模型作为候选
     const verifiedFile = path.join(process.cwd(), 'verified-models.json');
     let verifiedProviders: Set<string> | null = null;
@@ -84,13 +91,47 @@ export const taskToModelScorer: Scorer = {
       }
     } catch {}
 
+    // 读取 verified-models.json，只使用 status 为 verified 且 verified 为 true 的 provider
+    let activeVerifiedProviders = new Set<string>();
+    try {
+      const verifiedPath = path.join(process.cwd(), 'verified-models.json');
+      if (fs.existsSync(verifiedPath)) {
+        const raw = fs.readFileSync(verifiedPath, 'utf-8');
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const providerMap: Record<string, string> = {
+            'Google': 'gemini',
+            'OpenAI': 'openai',
+            'DeepSeek': 'deepseek',
+            '字节跳动': 'doubao',
+            'Anthropic': 'anthropic',
+          };
+          for (const item of list) {
+            // 只有 status === 'verified' 且 verified === true 且没有 quotaError 的才算 active
+            if (item?.status === 'verified' && item?.verified === true && !item?.quotaError && typeof item?.provider === 'string') {
+              const normalizedProvider = providerMap[item.provider] || item.provider.toLowerCase();
+              activeVerifiedProviders.add(normalizedProvider);
+              console.log(`[taskToModel] 可用provider: ${normalizedProvider}`);
+            } else if (item?.provider) {
+              const normalizedProvider = providerMap[item.provider] || item.provider.toLowerCase();
+              console.log(`[taskToModel] 过滤不可用provider: ${normalizedProvider} (status: ${item.status}, verified: ${item.verified}, hasQuotaError: ${!!item.quotaError})`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[taskToModel] 无法读取 verified-models.json:', e);
+    }
+
     const pool: CandidateItem[] = [];
     for (const model of models) {
-      // 若存在 verifiedProviders，则仅保留 provider 在其中的模型
-      if (verifiedProviders && verifiedProviders.size > 0) {
-        const prov = (model.provider || '').toLowerCase();
-        if (!verifiedProviders.has(prov)) continue;
+      // 只使用 activeVerifiedProviders 中的 provider
+      const modelProvider = (model.provider || '').toLowerCase();
+      if (activeVerifiedProviders.size > 0 && !activeVerifiedProviders.has(modelProvider)) {
+        console.log(`[taskToModel] 跳过不可用模型: ${model.provider}/${model.modelName}`);
+        continue;
       }
+      
       if (!applyHardConstraints(model, req)) continue;
       // coarse features
       const f: Record<string, number> = {};

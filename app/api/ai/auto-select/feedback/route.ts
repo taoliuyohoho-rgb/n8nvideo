@@ -3,13 +3,13 @@
  * POST /api/ai/auto-select/feedback
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { EstimationErrorClass, FBK_BAD_REQUEST, FBK_STORE_ERROR, formatErrorResponse } from '@/src/services/ai/estimation/errors';
 import { DEFAULT_FEEDBACK_SOURCE } from '@/src/services/ai/estimation/constants';
 
-const prisma = new PrismaClient();
 
 // Zod schema
 const AutoEvalSchema = z.object({

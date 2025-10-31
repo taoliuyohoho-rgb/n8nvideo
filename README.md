@@ -32,7 +32,7 @@
 
 ### 后端技术栈
 - **Prisma**: 数据库ORM
-- **SQLite**: 轻量级数据库（开发环境）
+- **PostgreSQL**: 开发/生产统一（推荐）
 - **Next.js API Routes**: 服务端API
 
 ### 数据库设计
@@ -71,13 +71,13 @@ cp env.example .env.local
 nano .env.local
 ```
 
-### 数据库设置
+### 数据库设置（PostgreSQL）
 ```bash
 # 生成Prisma客户端
 npm run db:generate
 
-# 推送数据库结构
-npm run db:push
+# 运行数据库迁移（建议）
+npm run db:migrate
 
 # 运行种子数据
 npm run db:seed

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务页面测试</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .test-section {
+      margin-bottom: 30px;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    .success { color: #22c55e; }
+    .error { color: #ef4444; }
+    pre {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    iframe {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 任务页面诊断工具</h1>
+  
+  <div class="test-section">
+    <h2>1. API 接口测试</h2>
+    <button onclick="testAPI()">测试 /api/tasks 接口</button>
+    <div id="api-result"></div>
+  </div>
+  
+  <div class="test-section">
+    <h2>2. 页面加载测试</h2>
+    <p>下方 iframe 应该显示任务列表页面：</p>
+    <iframe src="/admin/tasks"></iframe>
+  </div>
+  
+  <div class="test-section">
+    <h2>3. 控制台日志</h2>
+    <p>打开浏览器开发者工具 (F12) 查看控制台日志</p>
+    <p>应该看到以 <code>[TasksPage]</code> 开头的日志</p>
+  </div>
+
+  <script>
+    async function testAPI() {
+      const resultDiv = document.getElementById('api-result');
+      resultDiv.innerHTML = '<p>测试中...</p>';
+      
+      try {
+        const response = await fetch('/api/tasks?limit=5');
+        const data = await response.json();
+        
+        if (data.success) {
+          resultDiv.innerHTML = `
+            <p class="success">✅ API 正常</p>
+            <p>返回任务数: ${data.data.tasks.length}</p>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+          `;
+        } else {
+          resultDiv.innerHTML = `
+            <p class="error">❌ API 返回错误</p>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+          `;
+        }
+      } catch (error) {
+        resultDiv.innerHTML = `
+          <p class="error">❌ 请求失败</p>
+          <pre>${error.message}</pre>
+        `;
+      }
+    }
+    
+    // 自动测试
+    window.addEventListener('load', () => {
+      console.log('[诊断工具] 页面加载完成');
+      testAPI();
+    });
+  </script>
+</body>
+</html>
+

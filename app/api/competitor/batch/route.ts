@@ -1,148 +1,61 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import path from 'path'
-import fs from 'fs'
-import { aiExecutor } from '@/src/services/ai/AiExecutor'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { runCompetitorContract } from '@/src/services/ai/contracts'
-import { CompetitorAnalysisService } from '@/src/services/competitor/CompetitorAnalysisService'
 
-const prisma = new PrismaClient()
-
-// 竞品解析服务（解析URL基础数据）
-const competitorService = new CompetitorAnalysisService({
-  supportedPlatforms: ['tiktok', 'youtube', 'instagram', 'facebook'],
-  timeout: 30,
-  maxRetries: 3
-})
-
-// 将模型标记为未验证（401/403时降级）
-async function markModelAsUnverified(modelId: string) {
-  try {
-    const verifiedModelsFile = path.join(process.cwd(), 'verified-models.json')
-    if (!fs.existsSync(verifiedModelsFile)) return
-    const data = fs.readFileSync(verifiedModelsFile, 'utf8')
-    const models = JSON.parse(data)
-    const model = models.find((m: any) => m.id === modelId)
-    if (model) {
-      model.status = 'unverified'
-      model.verified = false
-      fs.writeFileSync(verifiedModelsFile, JSON.stringify(models, null, 2))
-      console.log(`⚠️ 模型 ${model.name} 已标记为未验证`)
-    }
-  } catch (error) {
-    console.error('更新模型验证状态失败:', error)
-  }
-}
-
-// 解析AI返回的描述与卖点
-function parseCompetitorAIResponse(text: string): { description: string; sellingPoints: string[] } {
-  // 优先解析JSON
-  try {
-    let jsonCandidate = text
-    const codeBlock = text.match(/```(?:json)?\n([\s\S]*?)\n```/i)
-    if (codeBlock && codeBlock[1]) jsonCandidate = codeBlock[1]
-    const obj = JSON.parse(jsonCandidate)
-    // 兼容多种键名
-    const description = (obj.description || obj.desc || obj.summary || '').toString().trim()
-    const rawPoints = obj.sellingPoints || obj.selling_points || obj.points || obj.bullets || []
-    const pointsRaw = Array.isArray(rawPoints) ? rawPoints : []
-    const sellingPoints = pointsRaw
-      .map((p: any) => (typeof p === 'string' ? p : (p?.text || p?.title || '')))
-      .map((s: string) => s.trim())
-      .filter((s: string) => s)
-      .slice(0, 12)
-    if (description || sellingPoints.length > 0) {
-      const finalDesc = description ? description.slice(0, 20) : ''
-      return { description: finalDesc, sellingPoints }
-    }
-  } catch (e) {
-    // ignore
-  }
-  // 回退：从行文本提取卖点
-  const lines = text.replace(/\r/g, '\n').split('\n').map(l => l.trim()).filter(Boolean)
-  const sellingPoints: string[] = []
-  for (const line of lines) {
-    const m = line.match(/^[-•\d\)]+\s*(.+)$/) || line.match(/^(.{8,})$/)
-    if (m && m[1]) sellingPoints.push(m[1])
-  }
-  const uniq = Array.from(new Set(sellingPoints)).slice(0, 8)
-  // 用第一条卖点作为兜底描述（20字以内）
-  const fallbackDesc = uniq[0] ? uniq[0].slice(0, 20) : ''
-  return { description: fallbackDesc, sellingPoints: uniq }
-}
-
-// 基于竞品解析结果生成描述与卖点（复用 aiExecutor）
-async function generateDescriptionAndSellingPoints(
-  productName: string,
-  competitorSummaries: Array<{ title?: string; description?: string; keyPoints?: string[]; sellingPoints?: string[] }>,
+// 使用新的Contract直接处理竞品分析（绕过傻逼编排器）
+async function processProductCompetitorAnalysis(
+  product: Record<string, unknown>,
+  urlsForProduct: string[],
+  rawText?: string,
+  images?: string[],
+  videoUrl?: string,
   customPrompt?: string
-): Promise<{ description: string; sellingPoints: string[] }> {
-  const defaultPrompt = `你是资深跨境电商运营。现在基于以下竞品要点，为“{productName}”生成：
-1) 一段中文商品描述（20字以内，简短扼要）
-2) 6-10条中文卖点（每条10-20字，尽量与竞品一致，不得杜撰；输出为JSON数组）
-
-必须严格输出JSON对象：
-{
-  "description": "...",
-  "sellingPoints": ["...","..."]
-}
-
-竞品要点：
-{competitors}
-`
-  const competitorsBlock = competitorSummaries.map((c, i) => {
-    const parts: string[] = []
-    if (c.title) parts.push(`标题: ${c.title}`)
-    if (c.description) parts.push(`描述: ${c.description}`)
-    if (Array.isArray(c.keyPoints) && c.keyPoints.length) parts.push(`要点: ${c.keyPoints.join('；')}`)
-    if (Array.isArray(c.sellingPoints) && c.sellingPoints.length) parts.push(`卖点: ${c.sellingPoints.join('；')}`)
-    return `#${i + 1} ${parts.join('\n')}`
-  }).join('\n\n')
-
-  const prompt = (customPrompt || defaultPrompt)
-    .replace(/\{productName\}/g, productName)
-    .replace(/\{competitors\}/g, competitorsBlock)
-
-  try {
-    const text = await aiExecutor.enqueue(() => aiExecutor.execute({ provider: 'gemini', prompt, useSearch: false }))
-    return parseCompetitorAIResponse(text)
-  } catch (err: any) {
-    const status = err?.status
-    if (status === 401 || status === 403) {
-      await markModelAsUnverified('gemini-2.5-flash')
-    }
-    throw err
+): Promise<{ description: string; sellingPoints: string[]; painPoints: string[]; targetAudience: string }> {
+  // 构建输入文本
+  const textParts: string[] = []
+  if (rawText) textParts.push(rawText)
+  if (urlsForProduct.length > 0) {
+    textParts.push(`竞品链接: ${urlsForProduct.join(', ')}`)
   }
-}
+  if (videoUrl) textParts.push(`视频链接: ${videoUrl}`)
+  
+  const competitorText = textParts.join('\n\n')
 
-// 直接基于URL列表进行AI生成（启用搜索，适配淘宝等站点）
-async function generateFromUrls(
-  productName: string,
-  urls: string[],
-  customPrompt?: string
-): Promise<{ description: string; sellingPoints: string[] }> {
-  const defaultPrompt = `你是资深跨境电商运营。请基于以下竞品链接（可自行检索补充信息）总结，
-为“{productName}”生成：
-1) 一段中文商品描述（20字以内，简短扼要）
-2) 6-10条中文卖点（每条10-20字，直接从竞品页面提取，不得杜撰；输出为JSON数组）
-
-严格输出JSON对象：
-{"description":"...","sellingPoints":["...","..."]}
-
-竞品链接：\n{links}`
-  const prompt = (customPrompt || defaultPrompt)
-    .replace(/\{productName\}/g, productName)
-    .replace(/\{links\}/g, urls.join('\n'))
-
-  try {
-    const text = await aiExecutor.enqueue(() => aiExecutor.execute({ provider: 'gemini', prompt, useSearch: true }))
-    return parseCompetitorAIResponse(text)
-  } catch (err: any) {
-    const status = err?.status
-    if (status === 401 || status === 403) {
-      await markModelAsUnverified('gemini-2.5-flash')
+  // 直接调用 runCompetitorContract
+  const result = await runCompetitorContract({
+    input: {
+      rawText: competitorText,
+      images: images && images.length > 0 ? images : undefined
+    },
+    needs: {
+      vision: !!(images && images.length > 0),
+      search: false,
+      streaming: false
+    },
+    policy: {
+      maxConcurrency: 3,
+      timeoutMs: 30000,
+      allowFallback: false
+    },
+    customPrompt,
+    context: {
+      productName: String(product.name || ''),
+      category: String(product.category || ''),
+      painPoints: []
     }
-    throw err
+  })
+
+  // 生成描述（优先目标受众，其次第一个卖点）
+  const description = result.targetAudience 
+    ? result.targetAudience.slice(0, 20)
+    : (result.sellingPoints[0] ? result.sellingPoints[0].slice(0, 20) : '')
+
+  return {
+    description,
+    sellingPoints: result.sellingPoints.slice(0, 10),
+    painPoints: result.painPoints || [],
+    targetAudience: result.targetAudience || ''
   }
 }
 
@@ -170,12 +83,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 为每个商品创建一个“竞品分析”任务（优先 competitor_tasks，不存在则回退 comment_scraping_tasks）
-    const tasks = [] as any[]
-    const hasCompetitorTasks = !!((prisma as any).competitorTask && (prisma as any).competitorTask.create)
+    const tasks: Array<{ id: string; productId: string; platform: string }> = []
+    const hasCompetitorTasks = !!(prisma as { competitorTask?: { create: unknown } }).competitorTask?.create
     for (const p of products) {
-      let task: any
+      let task: { id: string; productId: string; platform: string }
       if (hasCompetitorTasks) {
-        task = await (prisma as any).competitorTask.create({
+        task = await (prisma as { competitorTask: { create: (data: Record<string, unknown>) => Promise<{ id: string; productId: string; platform: string }> } }).competitorTask.create({
           data: {
             productId: p.id,
             status: 'pending',
@@ -207,7 +120,7 @@ export async function POST(request: NextRequest) {
       for (const task of tasks) {
         try {
           if (hasCompetitorTasks) {
-            await (prisma as any).competitorTask.update({ where: { id: task.id }, data: { status: 'running', startedAt: new Date() } })
+            await (prisma as { competitorTask: { update: (params: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown> } }).competitorTask.update({ where: { id: task.id }, data: { status: 'running', startedAt: new Date() } })
           } else {
             await prisma.commentScrapingTask.update({ where: { id: task.id }, data: { status: 'running', startedAt: new Date() } })
           }
@@ -227,57 +140,44 @@ export async function POST(request: NextRequest) {
             throw new Error('未提供有效输入（链接/文本/图片/视频）')
           }
 
-          // 解析全部URL（可用则利用解析器）
-          const competitorResults = [] as any[]
-          for (const u of urlsForProduct) {
-            try {
-              const r = await competitorService.analyzeCompetitor(u)
-              competitorResults.push(r)
-            } catch (e) {
-              console.warn('解析竞品失败:', u, e)
-            }
-          }
-
-          // 统一通过新AI契约处理（优先使用解析结果，否则走用户输入 -> 证据）
-          const input = {
-            url: hasUrl ? urlsForProduct[0] : '',
-            rawText,
-            images,
-            videoUrl
-          }
+          // 使用新的分析架构处理竞品分析
           let aiOutput: { description: string; sellingPoints: string[] }
           try {
-            aiOutput = await runCompetitorContract({
-              input,
-              customPrompt: prompt,
-              // 无链接或解析失败时不启用搜索；只有有链接但解析为空、且用户允许兜底时才需要search
-              needs: { search: hasUrl && competitorResults.length === 0, vision: Array.isArray(images) && images.length > 0 },
-              policy: { allowFallback, model, idempotencyKey: `${task.productId}:${(input.url||'')}:${(input.rawText||'').slice(0,50)}` },
-              context: {
-                productName: product.name,
-                category: product.category,
-                painPoints: (() => {
-                  try { return product.painPoints ? JSON.parse(product.painPoints as any) : [] } catch { return [] }
-                })()
-              }
-            })
-          } catch (e: any) {
-            const msg = e?.message || 'AI处理失败'
+            aiOutput = await processProductCompetitorAnalysis(
+              product,
+              urlsForProduct,
+              rawText,
+              images,
+              videoUrl,
+              prompt
+            )
+          } catch (e: unknown) {
+            const msg = (e as Error)?.message || 'AI处理失败'
             // 写入ai_call_logs
-            if ((prisma as any).aiCallLog && (prisma as any).aiCallLog.create) await (prisma as any).aiCallLog.create({ data: {
-              business: 'competitor',
-              model: model || 'auto',
-              success: false,
-              promptPreview: (prompt || '').slice(0, 200),
-              rawPreview: '',
-              error: msg
-            }})
-            if (hasCompetitorTasks) {
-              await (prisma as any).competitorTask.update({ where: { id: task.id }, data: { status: 'failed', errorLog: msg, completedAt: new Date() } })
-            } else {
-              await prisma.commentScrapingTask.update({ where: { id: task.id }, data: { status: 'failed', errorLog: msg, completedAt: new Date() } })
+            if ((prisma as { aiCallLog?: { create: unknown } }).aiCallLog?.create) {
+              await (prisma as { aiCallLog: { create: (data: Record<string, unknown>) => Promise<unknown> } }).aiCallLog.create({ 
+                data: {
+                  business: 'competitor',
+                  model: model || 'auto',
+                  success: false,
+                  promptPreview: (prompt || '').slice(0, 200),
+                  rawPreview: '',
+                  error: msg
+                }
+              })
             }
-            console.warn('❌ 契约处理失败:', { taskId: task.id, productId: product.id, msg })
+            if (hasCompetitorTasks) {
+              await (prisma as any).competitorTask.update({ 
+                where: { id: task.id }, 
+                data: { status: 'failed', errorLog: msg, completedAt: new Date() } 
+              })
+            } else {
+              await prisma.commentScrapingTask.update({ 
+                where: { id: task.id }, 
+                data: { status: 'failed', errorLog: msg, completedAt: new Date() } 
+              })
+            }
+            console.warn('❌ 竞品分析失败:', { taskId: task.id, productId: product.id, msg })
             continue
           }
 
@@ -306,13 +206,17 @@ export async function POST(request: NextRequest) {
             where: { id: product.id },
             data: updateData
           })
-          if ((prisma as any).aiCallLog && (prisma as any).aiCallLog.create) await (prisma as any).aiCallLog.create({ data: {
-            business: 'competitor',
-            model: model || 'auto',
-            success: true,
-            promptPreview: (prompt || '').slice(0, 200),
-            rawPreview: `${desc} | ${points.slice(0,2).join('、')}`.slice(0, 200)
-          }})
+          if ((prisma as any).aiCallLog?.create) {
+            await (prisma as any).aiCallLog.create({ 
+              data: {
+                business: 'competitor',
+                model: model || 'auto',
+                success: true,
+                promptPreview: (prompt || '').slice(0, 200),
+                rawPreview: `${desc} | ${points.slice(0,2).join('、')}`.slice(0, 200)
+              }
+            })
+          }
           console.log('✅ 竞品写回完成:', {
             productId: product.id,
             descLen: (updated.description || '').length,

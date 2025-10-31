@@ -3,7 +3,7 @@
  * LKG缓存、熔断状态管理、降级策略
  */
 
-import { ModelRecord, CircuitBreakerState, LKGCache } from './types';
+import type { ModelRecord, CircuitBreakerState, LKGCache } from './types';
 import {
   CIRCUIT_BREAKER_DURATION_MS,
   CIRCUIT_BREAKER_SEVERE_DURATION_MS,

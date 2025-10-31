@@ -3,10 +3,9 @@
  * 管理候选B池（models表）的读写与能力画像
  */
 
-import { PrismaClient } from '@prisma/client';
-import { ModelRecord } from './types';
+import { prisma } from '@/lib/prisma';
+import type { ModelRecord } from './types';
 
-const prisma = new PrismaClient();
 
 /**
  * 获取所有可用模型

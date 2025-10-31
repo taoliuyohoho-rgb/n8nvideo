@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { withTraceId } from '@/src/middleware/traceId'
 import { taskService } from '@/src/services/task/TaskService'
 import { createApiLogger } from '@/src/services/logger/Logger'

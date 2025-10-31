@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { withTraceId } from '@/src/middleware/traceId'
 import { createApiLogger } from '@/src/services/logger/Logger'
 
-const prisma = new PrismaClient()
 
 /**
  * 视频生成初始化 API
@@ -27,35 +27,33 @@ async function handler(request: NextRequest, traceId: string) {
 
     log.info('Initializing video generation', { productName })
 
-    // 1. 搜索商品库
+    // 1. 搜索商品库（兼容 SQLite：不用 mode: 'insensitive'）
     const searchName = productName.toLowerCase().trim()
     
-    // 精确匹配
-    let product = await prisma.product.findFirst({
-      where: {
-        name: {
-          equals: productName,
-          mode: 'insensitive'
-        }
-      }
-    })
+    // 先尝试精确匹配（区分大小写）
+    let product = await prisma.product.findFirst({ where: { name: productName } })
 
-    // 如果精确匹配失败，尝试模糊匹配
+    // 精确失败：做手动忽略大小写的精确匹配
     if (!product) {
-      const fuzzyMatches = await prisma.product.findMany({
-        where: {
-          name: {
-            contains: searchName,
-            mode: 'insensitive'
-          }
-        },
-        take: 5,
-        orderBy: { updatedAt: 'desc' }
-      })
+      const candidates = await prisma.product.findMany({ select: { id: true, name: true } })
+      const matched = candidates.find((p: any) => (p.name || '').toLowerCase() === searchName)
+      if (matched) {
+        product = await prisma.product.findUnique({ where: { id: matched.id } })
+      }
+    }
 
+    // 仍失败：模糊匹配（contains 不保证忽略大小写，退化为JS过滤）
+    if (!product) {
+      const fuzzyPool = await prisma.product.findMany({
+        select: { id: true, name: true, updatedAt: true }
+      })
+      const fuzzyMatches = fuzzyPool
+        .filter((p: any) => (p.name || '').toLowerCase().includes(searchName))
+        .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 5)
       if (fuzzyMatches.length > 0) {
-        product = fuzzyMatches[0] // 选择最新的匹配项
-        log.info('Using fuzzy match', { matchedName: product.name })
+        product = await prisma.product.findUnique({ where: { id: fuzzyMatches[0].id } })
+        log.info('Using fuzzy match', { matchedName: product?.name })
       }
     }
 
@@ -118,18 +116,24 @@ async function handler(request: NextRequest, traceId: string) {
     }
 
     // 6. 构建响应
+    const safeMetadata = product.metadata
+      ? (typeof product.metadata === 'string' ? (() => { try { return JSON.parse(product.metadata as any) } catch { return null } })() : product.metadata)
+      : null
+
     const response = {
       success: true,
       product: {
         id: product.id,
         name: product.name,
         description: product.description,
-        images: product.images || [],
-        country: targetCountries,
-        targetAudiences: targetAudiences,
+        category: (product as any).category || '未分类',
+        subcategory: (product as any).subcategory || null,
+        images: (product as any).images || (product as any).skuImages || [],
+        targetCountries: targetCountries,
+        targetAudience: targetAudiences,
         sellingPointsTop5: top5Result.sellingPoints,
         painPointsTop5: top5Result.painPoints,
-        metadata: product.metadata ? JSON.parse(product.metadata as string) : null
+        metadata: safeMetadata
       },
       top5: {
         sellingPoints: top5Result.sellingPoints,

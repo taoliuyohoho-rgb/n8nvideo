@@ -8,17 +8,57 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String?
-  role      String   @default("viewer")
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  videos    Video[]
+  id             String        @id @default(cuid())
+  email          String        @unique
+  name           String?
+  password       String?
+  role           String        @default("operator")
+  organizationId String?
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  videos         Video[]
+  organization   Organization? @relation(fields: [organizationId], references: [id])
 
   @@map("users")
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+  products    Product[]
+
+  @@map("organizations")
+}
+
+model Category {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  description   String?
+  parentId      String?   // 支持多级类目
+  level         Int       @default(1)
+  targetMarket  String?   // 目标市场特征
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  parent        Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children      Category[] @relation("CategoryHierarchy")
+  products      Product[]
+  
+  // 人设关系
+  personas         Persona[] @relation("PersonaPrimaryCategory") // 主类目（单选，向后兼容）
+  personaCategories PersonaCategory[] // 多对多关系
+  
+  @@index([parentId])
+  @@index([level])
+  @@index([isActive])
+  @@map("categories")
 }
 
 model Product {
@@ -26,6 +66,7 @@ model Product {
   name                 String             @unique
   description          String?
   category             String
+  categoryId           String?            // 关联Category表
   subcategory          String?
   sellingPoints        Json?
   skuImages            String?
@@ -33,6 +74,7 @@ model Product {
   targetAudience       Json?
   source               String             @default("manual")
   sourceUserId         String?
+  organizationId       String?
   isUserGenerated      Boolean            @default(false)
   needsReview          Boolean            @default(false)
   lastUserUpdate       DateTime?
@@ -48,15 +90,30 @@ model Product {
   // 新增视频生成相关字段
   images               String[]           @default([])
   country              String[]           @default([])
-  targetAudiences      String[]           @default([])
+  // 证据聚合字段
   sellingPointsTop5    String[]           @default([])
   painPointsTop5       String[]           @default([])
+  targetMarkets        String[]           @default([])
+  targetAudiences      String[]           @default([])
+  evidenceLastUpdate   DateTime?
   metadata             Json?              // { source: catalog|ai|user, lastSyncedAt }
-  personas             Persona[]
+  
+  // 人设关系
+  personas             Persona[] @relation("PersonaPrimaryProduct") // 主商品（单选，向后兼容）
+  personaProducts      PersonaProduct[] // 多对多关系
+  
   scripts              Script[]
   videoJobs            VideoJob[]
   analysisCandidates   AnalysisCandidate[]
+  evidence             ProductEvidence[]
+  organization         Organization?      @relation(fields: [organizationId], references: [id])
+  categoryRef          Category?          @relation(fields: [categoryId], references: [id])
 
+  @@index([category])
+  @@index([categoryId])
+  @@index([createdAt])
+  @@index([organizationId])
+  @@index([source])
   @@map("products")
 }
 
@@ -405,6 +462,18 @@ model PromptTemplate {
   @@map("prompt_templates")
 }
 
+model PromptRule {
+  id             String   @id @default(cuid())
+  businessModule String   @unique  // 每个业务模块唯一
+  inputFormat    String            // 输入格式
+  outputFormat   String            // 输出格式
+  analysisMethod String            // 分析方法
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("prompt_rules")
+}
+
 model EstimationModel {
   id               String                @id @default(cuid())
   provider         String
@@ -519,6 +588,10 @@ model Task {
   @@index([priority])
   @@index([scheduledAt])
   @@index([ownerId])
+  // 复合索引优化常见查询场景
+  @@index([status, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
+  @@index([status, type, createdAt(sort: Desc)])
   @@map("tasks")
 }
 
@@ -743,24 +816,81 @@ model RecommendationFeedback {
 
 // 视频生成相关模型
 model Persona {
-  id            String   @id @default(cuid())
-  productId     String
-  version       Int      @default(1)
-  coreIdentity  Json     // { name, age, gender, location, occupation }
-  look          Json     // { generalAppearance, hair, clothingAesthetic, signatureDetails }
-  vibe          Json     // { traits, demeanor, communicationStyle }
-  context       Json     // { hobbies, values, frustrations, homeEnvironment }
-  why           String   // 可信度理由
-  createdBy     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  modelUsed     Json?    // { provider, model }
-  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  scripts       Script[]
+  id                String   @id @default(cuid())
+  name              String   @default("未命名人设") // 人设名称
+  description       String?  // 人设描述
+  
+  // 保留单选字段（向后兼容旧数据和脚本生成）
+  categoryId        String   @default("default-category") // 主类目ID（兼容旧数据）
+  productId         String?  // 主商品ID（兼容旧数据）
+  
+  textDescription   String?  // 用户输入的文字描述（可选）
+  generatedContent  Json     @default("{}") // 生成的人设内容
+  aiModel           String   @default("gemini-pro") // 使用的AI模型
+  promptTemplate    String   @default("default-template") // 使用的prompt模板
+  generationParams  Json?    // 生成参数
+  createdBy         String?  // 创建者
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  isActive          Boolean  @default(true)
+  // 保留原有字段以兼容现有数据
+  version           Int      @default(1)
+  coreIdentity      Json?    // { name, age, gender, location, occupation }
+  look              Json?    // { generalAppearance, hair, clothingAesthetic, signatureDetails }
+  vibe              Json?    // { traits, demeanor, communicationStyle }
+  context           Json?    // { hobbies, values, frustrations, homeEnvironment }
+  why               String?  // 可信度理由
+  modelUsed         Json?    // { provider, model }
+  
+  // 单选关系（向后兼容）
+  product           Product?  @relation("PersonaPrimaryProduct", fields: [productId], references: [id], onDelete: Cascade)
+  category          Category  @relation("PersonaPrimaryCategory", fields: [categoryId], references: [id])
+  
+  // 多对多关系
+  personaProducts   PersonaProduct[]  // 人设关联的多个商品
+  personaCategories PersonaCategory[] // 人设关联的多个类目
+  
+  scripts           Script[]
 
+  @@index([categoryId])
   @@index([productId])
   @@index([createdBy])
+  @@index([isActive])
   @@map("personas")
+}
+
+// 人设-商品 多对多关系表
+model PersonaProduct {
+  id         String   @id @default(cuid())
+  personaId  String
+  productId  String
+  isPrimary  Boolean  @default(false) // 是否为主商品
+  createdAt  DateTime @default(now())
+  
+  persona    Persona  @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@unique([personaId, productId])
+  @@index([personaId])
+  @@index([productId])
+  @@map("persona_products")
+}
+
+// 人设-类目 多对多关系表
+model PersonaCategory {
+  id         String   @id @default(cuid())
+  personaId  String
+  categoryId String
+  isPrimary  Boolean  @default(false) // 是否为主类目
+  createdAt  DateTime @default(now())
+  
+  persona    Persona  @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  @@unique([personaId, categoryId])
+  @@index([personaId])
+  @@index([categoryId])
+  @@map("persona_categories")
 }
 
 model Script {
@@ -829,4 +959,88 @@ model AnalysisCandidate {
   @@index([source])
   @@index([adopted])
   @@map("analysis_candidates")
+}
+
+model ProductEvidence {
+  id            String    @id @default(cuid())
+  productId     String
+  platform      String    // tiktok, amazon, meta, etc.
+  url           String
+  title         String
+  description   String?
+  images        String[]  @default([])
+  targetMarkets String[]  @default([])
+  targetAudiences String[] @default([])
+  sellingPoints String[]  @default([])
+  painPoints    String[]  @default([])
+  angles        String[]  @default([])
+  evidenceMeta  Json      // {capturedAt, parserVer, source}
+  version       Int       @default(1)
+  rawPointerId  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rawPointer    RawPointer? @relation(fields: [rawPointerId], references: [id])
+
+  @@index([productId])
+  @@index([platform])
+  @@index([createdAt])
+  @@map("product_evidence")
+}
+
+model RawPointer {
+  id           String    @id @default(cuid())
+  storageKey   String    @unique
+  sha256       String    @unique
+  size         Int
+  ttlExpireAt  DateTime
+  createdAt    DateTime  @default(now())
+  evidence     ProductEvidence[]
+
+  @@index([ttlExpireAt])
+  @@map("raw_pointers")
+}
+
+model ScrapingTask {
+  id           String    @id @default(cuid())
+  batchId      String
+  url          String
+  platform     String
+  productId    String?
+  productName  String?
+  status       String    @default("pending") // pending|running|completed|failed
+  errorCode    String?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([batchId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("scraping_tasks")
+}
+
+model PromptGenerationHistory {
+  id                  String   @id @default(cuid())
+  productId           String?  // 关联的产品ID
+  productName         String   // 产品名称
+  productCategory     String?  // 产品类别
+  generatedPrompt     String   // 生成的prompt内容
+  promptTemplate      Json?    // 使用的prompt模板 { id, title }
+  modelUsed           Json?    // 使用的模型 { id, title, provider }
+  inputParams         Json?    // 输入参数（产品信息等）
+  recommendations     Json?    // 推荐信息
+  metadata            Json?    // 元数据（延迟、是否使用推荐等）
+  status              String   @default("success") // success|failed
+  errorMessage        String?  // 错误信息
+  createdBy           String?  // 创建者
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([productId])
+  @@index([productName])
+  @@index([status])
+  @@index([createdAt])
+  @@index([createdBy])
+  @@map("prompt_generation_history")
 }

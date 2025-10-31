@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 
-const prisma = new PrismaClient()
 
 export interface PainPoint {
   text: string
@@ -22,7 +21,7 @@ export class PainPointService {
     let existingPainPoints: PainPoint[] = []
     if (product?.painPoints) {
       try {
-        existingPainPoints = JSON.parse(product.painPoints)
+        existingPainPoints = JSON.parse(String(product.painPoints))
       } catch (e) {
         console.error('解析现有痛点失败:', e)
       }
@@ -212,7 +211,7 @@ export class PainPointService {
     }
 
     try {
-      return JSON.parse(product.painPoints)
+      return JSON.parse(String(product.painPoints))
     } catch (e) {
       console.error('解析痛点失败:', e)
       return []

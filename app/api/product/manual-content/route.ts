@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { productAnalysisService } from '@/src/services/product/ProductAnalysisService';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { logger } from '@/src/services/logger/Logger';
 
 export async function POST(request: NextRequest) {
@@ -55,22 +56,78 @@ export async function POST(request: NextRequest) {
       hasTargetAudience: !!targetAudience
     });
 
-    // 调用手动添加服务
-    const success = await productAnalysisService.addManualContent(productId, {
-      sellingPoints,
-      painPoints,
-      targetAudience
+    // 获取商品信息
+    const product = await prisma.product.findUnique({
+      where: { id: productId }
     });
 
-    if (success) {
-      logger.info('手动添加内容成功', { traceId, productId });
-      return NextResponse.json({
-        success: true,
-        message: '内容添加成功'
-      });
-    } else {
-      throw new Error('内容添加失败');
+    if (!product) {
+      return NextResponse.json(
+        { success: false, error: '商品不存在' },
+        { status: 404 }
+      );
     }
+
+    // 解析现有数据（用户手动输入，不需要AI分析，直接写库）
+    let existingSellingPoints: string[] = [];
+    let existingPainPoints: string[] = [];
+    let existingTargetAudience = '';
+
+    try {
+      if ((product as any).sellingPoints) {
+        const sp = (product as any).sellingPoints;
+        existingSellingPoints = typeof sp === 'string' ? JSON.parse(sp) : sp;
+      }
+    } catch (e) {
+      console.warn('解析现有卖点失败:', e);
+    }
+
+    try {
+      if ((product as any).painPoints) {
+        const pp = (product as any).painPoints;
+        existingPainPoints = typeof pp === 'string' ? JSON.parse(pp) : pp;
+      }
+    } catch (e) {
+      console.warn('解析现有痛点失败:', e);
+    }
+
+    existingTargetAudience = String(product.targetAudience || '');
+
+    // 合并新内容
+    const mergedSellingPoints = [...existingSellingPoints, ...(sellingPoints || [])];
+    const mergedPainPoints = [...existingPainPoints, ...(painPoints || [])];
+    const finalTargetAudience = targetAudience || existingTargetAudience;
+
+    // 更新商品
+    const updateData: any = {
+      updatedAt: new Date()
+    };
+
+    if (sellingPoints && sellingPoints.length > 0) {
+      updateData.sellingPoints = JSON.stringify(mergedSellingPoints);
+    }
+    if (painPoints && painPoints.length > 0) {
+      updateData.painPoints = JSON.stringify(mergedPainPoints);
+    }
+    if (targetAudience) {
+      updateData.targetAudience = finalTargetAudience;
+    }
+
+    await prisma.product.update({
+      where: { id: productId },
+      data: updateData
+    });
+
+    logger.info('手动添加内容成功', { traceId, productId });
+    return NextResponse.json({
+      success: true,
+      message: '内容添加成功',
+      data: {
+        addedSellingPoints: sellingPoints?.length || 0,
+        addedPainPoints: painPoints?.length || 0,
+        hasTargetAudience: !!targetAudience
+      }
+    });
 
   } catch (error: any) {
     logger.error('手动添加内容失败', { traceId, error: error.message });

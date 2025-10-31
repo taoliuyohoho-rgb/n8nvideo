@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
-const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
     const firstUser = await prisma.user.findFirst({
       orderBy: { createdAt: 'asc' }
     })
-    const usageDays = firstUser ? 
+    const usageDays = firstUser ?
       Math.floor((Date.now() - firstUser.createdAt.getTime()) / (1000 * 60 * 60 * 24)) : 0
 
     // 计算制作效率（成功生成的视频比例）

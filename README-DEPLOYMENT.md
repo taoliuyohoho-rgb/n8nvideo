@@ -132,7 +132,7 @@ curl -X POST https://your-app.com/api/auth/login \
 ### 常见问题
 
 **Q: SQLite 在生产环境不工作？**
-- A: 必须迁移到 PostgreSQL，参考 [数据库迁移](#数据库迁移)
+- A: 项目已统一为 PostgreSQL，请配置 `DATABASE_URL` 并运行 `prisma migrate deploy`
 
 **Q: Google Service Account 如何配置？**
 - A: 将 JSON 转为单行字符串，设置到 `GOOGLE_SERVICE_ACCOUNT_JSON` 环境变量

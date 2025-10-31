@@ -4,18 +4,37 @@
  * 将通用的推荐请求适配到 taskToPrompt scorer
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { poolCache } from '../cache';
 import type { Scorer } from '../registry';
 import type { RecommendRankRequest, CandidateItem } from '../types';
 import { 
   scoreTaskToPrompt,
   shouldExplore,
-  checkDiversity,
-  type TaskSubject,
-  type PromptCandidate
+  checkDiversity
 } from '../scorers/taskToPrompt';
 
-const prisma = new PrismaClient();
+
+type TaskSubject = {
+  businessModule: string;
+  taskType?: string;
+  inputLength?: number;
+  expectedOutputFormat?: string;
+  complexity?: 'simple' | 'medium' | 'complex';
+  priority?: 'low' | 'medium' | 'high';
+}
+
+type PromptCandidate = {
+  id: string;
+  name: string;
+  businessModule: string;
+  content: string;
+  variables?: string[];
+  performance?: number;
+  usageCount?: number;
+  successRate?: number;
+  isActive?: boolean;
+}
 
 export class TaskToPromptScorer implements Scorer {
   async rank(req: RecommendRankRequest): Promise<{
@@ -25,59 +44,78 @@ export class TaskToPromptScorer implements Scorer {
   }> {
     const { task, context, constraints } = req;
 
-    // 1. 确定业务模块
-    const businessModule = task.taskType || 'product-analysis';
+    // 1. 确定业务模块（优先使用 context.businessModule，否则用 task.taskType）
+    const businessModule = context?.businessModule || task.taskType || 'product-analysis';
     
     // 验证业务模块是否支持
     const supportedModules = [
       'product-analysis', 
-      'video-script', 
+      'competitor-analysis',
+      'video-script',
+      'video-generation',
+      'video-prompt',
       'ai-reverse-engineer', 
-      'product-painpoint',
-      'video-quality',
-      'style-matching',
       'persona.generate'
     ];
-    if (!supportedModules.includes(businessModule)) {
-      throw new Error(`不支持的业务模块: ${businessModule}`);
+    
+    // 统一业务模块名称（向后兼容）
+    let normalizedModule = businessModule
+    if (businessModule === 'persona-generation') {
+      normalizedModule = 'persona.generate'
+    }
+    if (businessModule === 'product-competitor') {
+      normalizedModule = 'competitor-analysis'
+    }
+    if (businessModule === 'style-matching') {
+      normalizedModule = 'video-generation'
+    }
+    
+    if (!supportedModules.includes(normalizedModule)) {
+      throw new Error(`不支持的业务模块: ${normalizedModule} (原始: ${businessModule})`);
     }
 
-    // 2. 构建 subject
+    // 2. 构建 subject（使用统一的模块名称）
     const subject: TaskSubject = {
-      type: 'task',
-      id: task.subjectRef?.entityId || `task-${Date.now()}`,
-      isActive: true,
-      businessModule,
+      businessModule: normalizedModule,
       taskType: task.taskType,
       complexity: this.inferComplexity(task),
       priority: task.budgetTier === 'high' ? 'high' : 'medium'
     };
 
-    // 3. 获取所有候选 Prompt 模板
-    const prompts = await prisma.promptTemplate.findMany({
-      where: {
-        businessModule,
-        isActive: true
-      },
-      orderBy: [
-        { isDefault: 'desc' },
-        { performance: 'desc' }
-      ]
-    });
+    // 3. 获取所有候选 Prompt 模板（使用统一的模块名称）
+    const prompts = await poolCache.getOrSet(
+      `prompts:${normalizedModule}`,
+      () => prisma.promptTemplate.findMany({
+        where: {
+          businessModule: normalizedModule,
+          isActive: true
+        },
+        orderBy: [
+          { isDefault: 'desc' },
+          { performance: 'desc' }
+        ]
+      }),
+      10 * 60 * 1000 // 10min TTL
+    );
 
     if (prompts.length === 0) {
-      throw new Error(`没有找到业务模块 ${businessModule} 的可用Prompt模板`);
+      console.warn(`[taskToPrompt] 没有找到业务模块 ${normalizedModule} 的可用Prompt模板，返回空结果`);
+      // 返回空结果而不是抛错，让系统使用默认配置
+      return {
+        topK: [],
+        coarseList: [],
+        fullPool: []
+      };
     }
 
     // 4. 转换为 PromptCandidate
-    const candidates: PromptCandidate[] = prompts.map(p => ({
+    const candidates: PromptCandidate[] = prompts.map((p: any) => ({
       id: p.id,
-      type: 'prompt_template',
-      isActive: p.isActive,
+      isActive: Boolean(p.isActive),
       name: p.name,
       businessModule: p.businessModule,
       content: p.content,
-      variables: p.variables ? (typeof p.variables === 'string' ? p.variables.split(',').map(v => v.trim()) : p.variables) : [],
+      variables: p.variables ? (typeof p.variables === 'string' ? p.variables.split(',').map((v: any) => v.trim()) : p.variables) : [],
       performance: p.performance || undefined,
       usageCount: p.usageCount || 0,
       successRate: p.successRate || undefined,
@@ -87,13 +125,12 @@ export class TaskToPromptScorer implements Scorer {
     // 5. 调用评分器
     const { coarseResults, fineResults } = await scoreTaskToPrompt(
       subject,
-      candidates,
+      candidates as any,
       {
         region: context?.region,
         channel: context?.channel,
-        budgetTier: context?.budgetTier,
-        availableVariables: (task as any).availableVariables || []
-      }
+        budgetTier: context?.budgetTier
+      } as any
     );
 
     // 6. 构建结果
@@ -110,11 +147,11 @@ export class TaskToPromptScorer implements Scorer {
     const fullPool = coarseResults.filter(r => !r.filtered);
 
     // 转换为 CandidateItem
-    const toCandidateItem = (result: any, candidate: PromptCandidate): CandidateItem => ({
+    const toCandidateItem = (result: any, candidate: any): CandidateItem => ({
       id: result.candidateId,
-      type: 'prompt_template',
+      type: 'prompt',
       title: candidate.name,
-      summary: candidate.description || `业务模块: ${candidate.businessModule}`,
+      summary: `业务模块: ${candidate.businessModule}`,
       coarseScore: coarseResults.find(r => r.candidateId === result.candidateId)?.score,
       fineScore: result.score,
       reason: {

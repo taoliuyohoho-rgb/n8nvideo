@@ -49,7 +49,7 @@ export function normalizeUserInput(input: UserInput): Evidence[] {
     input.images
       .map(s => s?.trim())
       .filter(Boolean)
-      .forEach(img => evidences.push({ kind: 'image', content: img! }))
+      .forEach(img => evidences.push({ kind: 'image', content: img }))
   }
 
   if (isHttpUrl(input.videoUrl)) {

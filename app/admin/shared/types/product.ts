@@ -11,8 +11,9 @@ export interface Product {
   sellingPoints: string[]
   skuImages: string[]
   targetCountries: string[]
-  createdAt: string
-  painPoints?: Array<string | { text?: string; painPoint?: string; [key: string]: any }>
-  targetAudience?: string[]
+  createdAt: Date
+  updatedAt: Date
+  painPoints: string[]
+  targetAudience: string[]
 }
 

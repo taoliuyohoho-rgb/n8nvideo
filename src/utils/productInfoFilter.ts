@@ -87,15 +87,15 @@ export class ProductInfoFilter {
       result.scores = {
         sellingPoints: filteredSellingPoints.map(item => ({
           content: item.content,
-          score: item.matchScore || 0
+          score: (item as any).matchScore || 0
         })),
         painPoints: filteredPainPoints.map(item => ({
           content: item.content,
-          score: item.matchScore || 0
+          score: (item as any).matchScore || 0
         })),
         targetAudience: filteredTargetAudience.map(item => ({
           content: item.content,
-          score: item.matchScore || 0
+          score: (item as any).matchScore || 0
         }))
       };
     }

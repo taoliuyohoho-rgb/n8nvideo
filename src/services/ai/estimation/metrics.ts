@@ -3,10 +3,9 @@
  * 段位指标统计与监控
  */
 
-import { PrismaClient } from '@prisma/client';
-import { SegmentMetrics } from './types';
+import { prisma } from '@/lib/prisma';
+import type { SegmentMetrics } from './types';
 
-const prisma = new PrismaClient();
 
 /**
  * 记录决策反馈（用于后续聚合）
@@ -259,7 +258,7 @@ export async function aggregateBySegment(days: number = 1): Promise<SegmentMetri
 
   const result: SegmentMetrics[] = [];
 
-  for (const [key, data] of segmentMap.entries()) {
+  segmentMap.forEach((data, key) => {
     result.push({
       segmentKey: key,
       qualityScore: data.validCount > 0 ? data.qualitySum / data.validCount : undefined,
@@ -269,7 +268,7 @@ export async function aggregateBySegment(days: number = 1): Promise<SegmentMetri
       avgLatency: data.totalCount > 0 ? data.latencySum / data.totalCount : 0,
       sampleCount: data.totalCount,
     });
-  }
+  })
 
   return result;
 }

@@ -153,7 +153,7 @@ async function migrate() {
           painPoints: item.painPoints as any,
           targetCountries: item.targetCountries as any,
           targetAudience: item.targetAudience as any
-        })), 
+        })) as any, 
         skipDuplicates: true 
       })
     )

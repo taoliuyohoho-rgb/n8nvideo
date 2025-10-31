@@ -1,561 +1,810 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 
 // POST /api/admin/prompts/init-defaults - 初始化默认 Prompt 模板（每个业务模块5个）
 export async function POST(request: NextRequest) {
   try {
     const defaultPrompts = [
-      // ========== 商品库-痛点管理 (5个) ==========
+
+      // ========== 商品分析 (5个) ==========
       {
-        name: '痛点分析-标准模板',
-        businessModule: 'product-painpoint',
-        content: `请分析以下商品的用户痛点：
+        name: '商品分析-标准模板',
+        businessModule: 'product-analysis',
+        content: `请全面分析以下商品：
 
 商品名称：{{productName}}
-商品类目：{{category}}
+类目：{{category}}
 商品描述：{{description}}
-
-请从以下角度分析痛点：
-1. 功能性痛点
-2. 情感性痛点
-3. 社交性痛点
-4. 价格敏感性痛点
-
-返回JSON格式：
-{
-  "painPoints": ["痛点1", "痛点2", ...],
-  "severity": "high|medium|low",
-  "targetAudience": "目标受众描述"
-}`,
-        variables: JSON.stringify(['productName', 'category', 'description']),
-        description: '标准痛点分析模板',
-        isDefault: true,
-        createdBy: 'system'
-      },
-      {
-        name: '痛点分析-电商专用',
-        businessModule: 'product-painpoint',
-        content: `作为跨境电商专家，请分析以下商品在目标市场的用户痛点：
-
-商品：{{productName}}
-类目：{{category}}
-目标国家：{{targetCountry}}
-
-重点关注：
-- 本地化需求
-- 物流痛点
-- 价格敏感度
-- 信任问题
-
-JSON输出：{"painPoints": [...], "localizedConcerns": [...]}`,
-        variables: JSON.stringify(['productName', 'category', 'targetCountry']),
-        description: '专注跨境电商痛点',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '痛点分析-情感驱动',
-        businessModule: 'product-painpoint',
-        content: `请深入挖掘用户的情感痛点：
-
-产品：{{productName}}
-受众：{{targetAudience}}
+目标市场：{{targetMarket}}
 
 分析维度：
-1. 焦虑与恐惧
-2. 愿望与渴望
-3. 社交认同
-4. 自我实现
-
-输出格式：{"emotionalPainPoints": [...], "triggers": [...]}`,
-        variables: JSON.stringify(['productName', 'targetAudience']),
-        description: '强调情感层面的痛点',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '痛点分析-竞品对比',
-        businessModule: 'product-painpoint',
-        content: `基于竞品分析，找出我们产品能解决的痛点：
-
-我的产品：{{productName}}
-竞品：{{competitorProducts}}
-类目：{{category}}
-
-对比分析：
-- 竞品未解决的痛点
-- 我们的优势点
-- 用户转换动机
-
-JSON：{"painPoints": [...], "competitiveAdvantages": [...]}`,
-        variables: JSON.stringify(['productName', 'competitorProducts', 'category']),
-        description: '结合竞品找痛点',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '痛点分析-快速版',
-        businessModule: 'product-painpoint',
-        content: `快速提取核心痛点（10秒内完成）：
-
-产品：{{productName}}
-类目：{{category}}
-
-只需输出3-5个最核心的痛点，每个10-15字。
-
-JSON：{"painPoints": ["...", "...", "..."]}`,
-        variables: JSON.stringify(['productName', 'category']),
-        description: '快速简洁版本',
-        isDefault: false,
-        createdBy: 'system'
-      },
-
-      // ========== 商品库-竞品分析 (5个) ==========
-      {
-        name: '竞品分析-全面版',
-        businessModule: 'product-competitor',
-        content: `请全面分析以下竞品：
-
-竞品URL：{{competitorUrl}}
-类目：{{category}}
-
-分析维度：
-1. 核心卖点
-2. 视觉风格
-3. 文案结构
-4. 目标受众
-5. 价格策略
+1. 核心卖点（3-5个，每个8-12字）
+2. 用户痛点（3-5个，每个8-12字）
+3. 目标受众（8-12字）
+4. 竞争优势
+5. 适用场景
 
 JSON：{
-  "sellingPoints": [...],
-  "visualStyle": "...",
-  "scriptStructure": "...",
+  "sellingPoints": ["...", "...", ...],
+  "painPoints": ["...", "...", ...],
   "targetAudience": "...",
-  "priceStrategy": "..."
+  "competitiveAdvantages": [...],
+  "usageScenarios": [...]
 }`,
-        variables: JSON.stringify(['competitorUrl', 'category']),
-        description: '全面竞品分析模板',
+        variables: JSON.stringify(['productName', 'category', 'description', 'targetMarket']),
+        description: '标准商品分析模板',
         isDefault: true,
         createdBy: 'system'
       },
       {
-        name: '竞品分析-视频专用',
-        businessModule: 'product-competitor',
-        content: `分析竞品视频的制作要素：
+        name: '商品分析-快速版',
+        businessModule: 'product-analysis',
+        content: `快速提取商品核心信息：
 
-视频URL：{{competitorUrl}}
-标题：{{videoTitle}}
-
-重点提取：
-- 开场钩子（前3秒）
-- 视觉效果
-- 转场方式
-- BGM风格
-- CTA设计
-
-JSON：{"hooks": [...], "visualEffects": [...], "transitions": [...]}`,
-        variables: JSON.stringify(['competitorUrl', 'videoTitle']),
-        description: '专注视频制作分析',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '竞品分析-文案提取',
-        businessModule: 'product-competitor',
-        content: `提取竞品的核心文案：
-
-来源：{{competitorUrl}}
-描述：{{videoDescription}}
-
-提取内容：
-1. 标题公式
-2. 痛点描述方式
-3. 卖点表达
-4. 行动号召
-
-JSON：{"titleFormula": "...", "painPointPhrases": [...], "ctaTemplates": [...]}`,
-        variables: JSON.stringify(['competitorUrl', 'videoDescription']),
-        description: '专注文案提取',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '竞品分析-受众洞察',
-        businessModule: 'product-competitor',
-        content: `分析竞品的目标受众：
-
-竞品：{{competitorUrl}}
-评论：{{referenceComments}}
-
-洞察维度：
-- 受众画像
-- 关注点
-- 决策因素
-- 情感需求
-
-JSON：{"audience": {...}, "keyFactors": [...], "emotions": [...]}`,
-        variables: JSON.stringify(['competitorUrl', 'referenceComments']),
-        description: '深入受众分析',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '竞品分析-快速扫描',
-        businessModule: 'product-competitor',
-        content: `30秒快速扫描竞品核心信息：
-
-URL：{{competitorUrl}}
+商品：{{productName}}
+描述：{{description}}
 
 只提取：
-- 3个核心卖点
-- 1句价值主张
-- 目标受众（一句话）
+- 3个核心卖点（每个8-12字）
+- 3个关键痛点（每个8-12字）
+- 目标受众（8-12字）
 
-JSON：{"sellingPoints": ["...", "...", "..."], "valueProposition": "...", "audience": "..."}`,
-        variables: JSON.stringify(['competitorUrl']),
-        description: '快速版竞品扫描',
+JSON：{
+  "sellingPoints": ["...", "...", "..."],
+  "painPoints": ["...", "...", "..."],
+  "targetAudience": "..."
+}`,
+        variables: JSON.stringify(['productName', 'description']),
+        description: '快速商品分析',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '商品分析-深度版',
+        businessModule: 'product-analysis',
+        content: `深度分析商品及市场定位：
+
+商品：{{productName}}
+类目：{{category}}
+描述：{{description}}
+目标市场：{{targetMarket}}
+竞品参考：{{competitorInfo}}
+
+深度分析：
+1. 产品定位分析
+2. 目标人群细分
+3. 核心卖点（5个）
+4. 痛点分析（5个）
+5. 差异化优势
+6. 营销建议
+7. 定价策略建议
+
+JSON：{
+  "positioning": "...",
+  "audienceSegments": [...],
+  "sellingPoints": [...],
+  "painPoints": [...],
+  "differentiation": [...],
+  "marketingRecommendations": [...],
+  "pricingStrategy": "..."
+}`,
+        variables: JSON.stringify(['productName', 'category', 'description', 'targetMarket', 'competitorInfo']),
+        description: '深度商品与市场分析',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '商品分析-场景化',
+        businessModule: 'product-analysis',
+        content: `基于使用场景分析商品：
+
+商品：{{productName}}
+类目：{{category}}
+目标场景：{{targetScenarios}}
+
+场景化分析：
+- 每个场景的核心卖点
+- 场景相关痛点
+- 目标用户特征
+- 使用时机
+- 购买动机
+
+JSON：{
+  "scenarios": [
+    {
+      "scenario": "...",
+      "sellingPoints": [...],
+      "painPoints": [...],
+      "targetUsers": "...",
+      "timing": "...",
+      "buyingMotivation": "..."
+    }
+  ]
+}`,
+        variables: JSON.stringify(['productName', 'category', 'targetScenarios']),
+        description: '场景化商品分析',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '商品分析-竞争对比',
+        businessModule: 'product-analysis',
+        content: `商品与竞品对比分析：
+
+我的商品：{{productName}}
+商品描述：{{description}}
+竞品信息：{{competitorInfo}}
+
+对比分析：
+- 相对优势（卖点）
+- 相对劣势
+- 差异化点
+- 目标受众重叠度
+- 定位建议
+
+JSON：{
+  "advantages": [...],
+  "disadvantages": [...],
+  "differentiators": [...],
+  "audienceOverlap": "...",
+  "positioningAdvice": "..."
+}`,
+        variables: JSON.stringify(['productName', 'description', 'competitorInfo']),
+        description: '商品竞争对比分析',
         isDefault: false,
         createdBy: 'system'
       },
 
-      // ========== 视频生成-脚本生成 (5个) ==========
+      // ========== 视频生成-脚本生成 (4个差异化模板) ==========
       {
-        name: '脚本生成-标准模板',
+        name: '脚本生成-通用营销',
         businessModule: 'video-script',
-        content: `请为以下商品生成15-30秒视频脚本：
+        content: `生成通用营销型{{duration}}秒视频脚本：
 
-商品：{{productName}}
+【产品信息】
+产品：{{productName}}
 类目：{{category}}
-卖点：{{sellingPoints}}
-受众：{{targetAudience}}
-时长：{{duration}}秒
+核心卖点：{{sellingPoints}}
+目标受众：{{targetAudience}}
+用户痛点：{{painPoints}}
+使用场景：{{usageScenarios}}
 
-脚本结构：
-1. 开场钩子（3-5秒）- 吸引注意
-2. 痛点呈现（5-8秒）- 引发共鸣
-3. 产品介绍（8-12秒）- 展示解决方案
-4. 卖点强化（5-8秒）- 突出优势
-5. 行动号召（3-5秒）- 促进转化
+【营销脚本结构】
+1. 开场钩子（前3秒）：用具体数据、疑问或冲突吸引注意
+2. 痛点共鸣（5-8秒）：描述目标用户真实痛点，引发情感共鸣
+3. 产品解决方案（8-15秒）：
+   - 清晰展示产品如何解决痛点
+   - 突出1-2个核心差异化优势
+   - 用具体使用场景证明效果
+4. 信任建立（5-8秒）：数据证明、用户证言或对比优势
+5. 行动号召（3-5秒）：明确的下一步行动，创造紧迫感
 
-请包含：旁白、画面描述、转场提示`,
-        variables: JSON.stringify(['productName', 'category', 'sellingPoints', 'targetAudience', 'duration']),
-        description: '标准视频脚本模板',
+【内容质量标准】
+- 避免空洞词汇（"很好"、"不错"等）
+- 使用具体数据和事实
+- 语言符合目标受众习惯
+- 情感化表达，有画面感
+- 逻辑清晰，节奏紧凑
+
+输出格式：
+{
+  "script": "完整脚本内容",
+  "hook": "开场钩子",
+  "painPoint": "痛点描述", 
+  "solution": "解决方案",
+  "trust": "信任建立",
+  "cta": "行动号召",
+  "tone": "语气风格",
+  "visualHints": "画面提示"
+}`,
+        variables: JSON.stringify(['productName', 'category', 'sellingPoints', 'targetAudience', 'duration', 'painPoints', 'usageScenarios']),
+        description: '通用营销脚本模板',
         isDefault: true,
         createdBy: 'system'
       },
       {
-        name: '脚本生成-TikTok风格',
+        name: '脚本生成-短视频平台',
         businessModule: 'video-script',
-        content: `生成TikTok/抖音风格的15秒快节奏脚本：
+        content: `生成短视频平台（TikTok/抖音/快手）{{duration}}秒脚本：
 
+【产品信息】
 产品：{{productName}}
-卖点：{{sellingPoints}}
+核心卖点：{{sellingPoints}}
+目标受众：{{targetAudience}}
+用户痛点：{{painPoints}}
+使用场景：{{usageScenarios}}
 
-TikTok要求：
-- 前1秒必须抓眼球
-- 节奏快，信息密度高
-- 配乐建议
-- 字幕节点
-- 转场特效
+【短视频脚本要求】
+1. 前1秒钩子（必须抓眼球）：
+   - 用争议性话题、数据冲击或情感冲突
+   - 避免"大家好"等老套开头
+   - 直接切入核心价值或痛点
 
-输出：旁白 + 画面 + 特效提示`,
-        variables: JSON.stringify(['productName', 'sellingPoints']),
-        description: 'TikTok短视频专用',
+2. 核心内容（8-12秒）：
+   - 用具体数据证明产品效果
+   - 展示使用前后的强烈对比
+   - 突出1个最核心的差异化卖点
+   - 语言简洁有力，每句话都有信息量
+
+3. 行动号召（2-3秒）：
+   - 创造紧迫感（限时、限量等）
+   - 明确的下一步行动
+   - 配合视觉冲击
+
+【平台特色要求】
+- 每3秒一个转折点，保持观众注意力
+- 语言符合Z世代表达习惯
+- 节奏紧凑，信息密度高
+- 配乐建议：节奏感强的背景音乐
+- 字幕节点：关键信息加字幕强调
+- 转场特效：快速切换，视觉冲击
+
+输出格式：
+{
+  "script": "完整脚本内容",
+  "hook": "前1秒钩子",
+  "mainContent": "核心内容",
+  "cta": "行动号召",
+  "musicStyle": "配乐风格",
+  "subtitlePoints": ["字幕节点1", "字幕节点2"],
+  "visualEffects": ["特效提示1", "特效提示2"],
+  "shootingAngles": ["拍摄角度1", "拍摄角度2"]
+}`,
+        variables: JSON.stringify(['productName', 'sellingPoints', 'targetAudience', 'duration', 'painPoints', 'usageScenarios']),
+        description: '短视频平台专用',
         isDefault: false,
         createdBy: 'system'
       },
       {
-        name: '脚本生成-故事叙事',
+        name: '脚本生成-故事化叙事',
         businessModule: 'video-script',
-        content: `用故事化叙事生成脚本：
+        content: `生成故事化叙事{{duration}}秒视频脚本：
 
+【产品信息】
 产品：{{productName}}
 受众：{{targetAudience}}
-时长：{{duration}}秒
+核心价值：{{coreValue}}
+使用场景：{{usageScenarios}}
+用户痛点：{{painPoints}}
 
-故事三幕：
-1. 困境：用户遇到的问题
-2. 转折：发现产品
-3. 解决：使用后的改变
+【故事三幕结构】
+第一幕-困境（5-8秒）：
+- 描述目标用户面临的真实困境
+- 用具体场景和细节增强代入感
+- 突出困境带来的痛苦和损失
 
-要求：情感化、画面感强、有代入感`,
-        variables: JSON.stringify(['productName', 'targetAudience', 'duration']),
-        description: '故事化脚本',
+第二幕-转折（8-12秒）：
+- 产品如何被发现或引入
+- 产品如何开始改变用户生活
+- 展示产品与困境的对比
+
+第三幕-解决（5-8秒）：
+- 使用产品后的具体改变
+- 量化的改善效果
+- 情感化的满足感
+
+【叙事特色要求】
+- 使用第一人称或真实用户视角
+- 包含具体的时间、地点、人物
+- 情感层次丰富，有起伏
+- 画面感强，便于拍摄
+- 避免说教式表达，用故事说话
+
+输出格式：
+{
+  "story": "完整故事脚本",
+  "act1": "困境描述",
+  "act2": "转折过程", 
+  "act3": "解决结果",
+  "characters": "主要角色",
+  "scenes": "关键场景",
+  "emotions": "情感变化",
+  "visualHints": "画面提示"
+}`,
+        variables: JSON.stringify(['productName', 'targetAudience', 'duration', 'coreValue', 'usageScenarios', 'painPoints']),
+        description: '故事化叙事脚本',
         isDefault: false,
         createdBy: 'system'
       },
       {
-        name: '脚本生成-产品演示',
+        name: '脚本生成-专业演示',
         businessModule: 'video-script',
-        content: `生成产品演示型脚本：
+        content: `生成专业产品演示{{duration}}秒脚本：
 
+【产品信息】
 产品：{{productName}}
-功能：{{features}}
-时长：{{duration}}秒
+核心功能：{{features}}
+目标受众：{{targetAudience}}
+使用场景：{{usageScenarios}}
+产品优势：{{sellingPoints}}
+技术特点：{{technicalFeatures}}
 
-演示流程：
-1. 产品全貌展示
-2. 核心功能演示
-3. 使用场景展示
-4. 效果对比
-5. 购买引导
+【专业演示结构】
+1. 产品价值定位（3-5秒）：
+   - 用数据突出产品核心价值
+   - 展示产品外观和质感
+   - 建立产品专业形象
 
-强调：清晰的产品展示角度和特写镜头`,
-        variables: JSON.stringify(['productName', 'features', 'duration']),
-        description: '产品演示专用',
+2. 功能深度演示（10-15秒）：
+   - 逐步展示主要功能点
+   - 用具体操作证明功能效果
+   - 突出与竞品的差异化优势
+   - 展示真实使用场景
+
+3. 效果数据证明（5-8秒）：
+   - 使用前后的明显对比
+   - 用数据量化改善效果
+   - 展示用户真实反馈
+
+4. 专业购买引导（3-5秒）：
+   - 明确的产品价值总结
+   - 创造购买紧迫感
+   - 清晰的行动指引
+
+【专业要求】
+- 语言专业但易懂，符合目标受众
+- 每个功能点都要有实际效果证明
+- 突出产品独特性和专业性
+- 镜头语言：专业、稳定、有说服力
+- 多角度特写，突出产品质感
+
+输出格式：
+{
+  "script": "完整演示脚本",
+  "overview": "产品全貌展示",
+  "demoSteps": ["功能演示步骤1", "功能演示步骤2"],
+  "comparison": "效果对比描述",
+  "purchaseGuide": "购买引导",
+  "shootingAngles": ["拍摄角度1", "拍摄角度2"],
+  "keyFeatures": ["核心功能1", "核心功能2"],
+  "dataPoints": ["数据证明1", "数据证明2"],
+  "technicalHighlights": ["技术亮点1", "技术亮点2"]
+}`,
+        variables: JSON.stringify(['productName', 'features', 'targetAudience', 'duration', 'usageScenarios', 'sellingPoints', 'technicalFeatures']),
+        description: '专业产品演示脚本',
         isDefault: false,
         createdBy: 'system'
       },
       {
-        name: '脚本生成-促销活动',
+        name: '脚本质量评估',
         businessModule: 'video-script',
-        content: `生成促销/限时活动脚本：
+        content: `评估以下视频脚本的质量并给出改进建议：
 
-产品：{{productName}}
-优惠：{{promotion}}
-时长：{{duration}}秒
+脚本内容：{{scriptContent}}
+产品信息：{{productInfo}}
+目标受众：{{targetAudience}}
 
-紧迫感元素：
-- 倒计时提示
-- 限量信息
-- 价格对比
-- 立即行动号召
+【评估维度】
+1. 内容质量（25分）：
+   - 是否避免空洞词汇
+   - 是否有具体数据和事实
+   - 是否突出产品差异化
 
-要求：制造FOMO（错失恐惧）`,
-        variables: JSON.stringify(['productName', 'promotion', 'duration']),
-        description: '促销活动专用',
+2. 结构逻辑（25分）：
+   - 开场是否吸引人
+   - 逻辑是否清晰
+   - 节奏是否紧凑
+
+3. 情感共鸣（25分）：
+   - 是否击中用户痛点
+   - 是否有情感化表达
+   - 是否有画面感
+
+4. 转化效果（25分）：
+   - 行动号召是否明确
+   - 是否创造紧迫感
+   - 是否符合受众习惯
+
+【输出格式】
+{
+  "overallScore": 85,
+  "scores": {
+    "content": 20,
+    "structure": 22,
+    "emotion": 23,
+    "conversion": 20
+  },
+  "strengths": ["具体优势点"],
+  "weaknesses": ["需要改进的地方"],
+  "suggestions": ["具体改进建议"],
+  "improvedScript": "优化后的脚本内容"
+}`,
+        variables: JSON.stringify(['scriptContent', 'productInfo', 'targetAudience']),
+        description: '脚本质量评估和优化',
         isDefault: false,
         createdBy: 'system'
       },
 
-      // ========== 视频生成-风格匹配 (5个) ==========
+      // ========== 竞品对比分析 (5个) ==========
       {
-        name: '风格匹配-智能推荐',
-        businessModule: 'style-matching',
-        content: `为商品推荐最合适的视频风格：
+        name: '竞品对比-全面矩阵',
+        businessModule: 'competitor-analysis',
+        content: `对比分析以下竞品，生成竞品矩阵：
 
-商品：{{productName}}
-类目：{{category}}
-目标国家：{{targetCountries}}
-受众：{{targetAudience}}
-
-可选风格：
-{{availableStyles}}
+竞品列表：{{competitorList}}
+对比维度：{{comparisonDimensions}}
+我的产品：{{myProduct}}
 
 分析维度：
-- 产品属性匹配
-- 受众偏好
-- 文化适配
-- 转化潜力
+1. 价格定位对比
+2. 功能特性对比
+3. 目标受众对比
+4. 营销策略对比
+5. 差异化机会点
 
 JSON：{
-  "recommendations": [
-    {"styleId": "...", "styleName": "...", "score": 0.95, "reason": "..."},
+  "comparisonMatrix": [
+    {
+      "competitor": "...",
+      "price": "...",
+      "features": [...],
+      "audience": "...",
+      "marketing": "...",
+      "strengths": [...],
+      "weaknesses": [...]
+    }
+  ],
+  "opportunities": [...],
+  "recommendations": [...]
+}`,
+        variables: JSON.stringify(['competitorList', 'comparisonDimensions', 'myProduct']),
+        description: '全面竞品对比矩阵',
+        isDefault: true,
+        createdBy: 'system'
+      },
+      {
+        name: '竞品对比-差异化分析',
+        businessModule: 'competitor-analysis',
+        content: `识别差异化机会：
+
+我的产品：{{myProduct}}
+竞品概况：{{competitorSummary}}
+目标市场：{{targetMarket}}
+
+重点分析：
+- 市场空白点
+- 未被满足的需求
+- 可突破的维度
+- 差异化策略建议
+
+JSON：{"gaps": [...], "unmetNeeds": [...], "opportunities": [...], "strategy": "..."}`,
+        variables: JSON.stringify(['myProduct', 'competitorSummary', 'targetMarket']),
+        description: '差异化机会识别',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '竞品对比-定价策略',
+        businessModule: 'competitor-analysis',
+        content: `竞品定价策略分析：
+
+竞品定价：{{competitorPricing}}
+我的成本：{{myCost}}
+目标利润：{{targetProfit}}
+
+分析内容：
+1. 价格区间分析
+2. 价值感知对比
+3. 促销策略总结
+4. 定价建议
+
+JSON：{"priceRange": {...}, "valuePerception": [...], "pricingStrategy": "...", "recommendation": "..."}`,
+        variables: JSON.stringify(['competitorPricing', 'myCost', 'targetProfit']),
+        description: '定价策略分析',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '竞品对比-营销策略',
+        businessModule: 'competitor-analysis',
+        content: `竞品营销策略对比：
+
+竞品列表：{{competitorList}}
+营销渠道：{{marketingChannels}}
+
+对比维度：
+- 内容策略
+- 渠道组合
+- 投放节奏
+- 创意风格
+- 转化路径
+
+JSON：{"contentStrategy": {...}, "channelMix": [...], "creativeStyle": [...], "insights": [...]}`,
+        variables: JSON.stringify(['competitorList', 'marketingChannels']),
+        description: '营销策略对比',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '竞品对比-用户评价',
+        businessModule: 'competitor-analysis',
+        content: `基于用户评价的竞品对比：
+
+竞品评价数据：{{reviewData}}
+评价来源：{{reviewSources}}
+
+分析维度：
+- 用户满意点
+- 常见抱怨
+- 期待改进
+- 转向因素
+
+JSON：{"satisfaction": [...], "complaints": [...], "expectations": [...], "switchingFactors": [...]}`,
+        variables: JSON.stringify(['reviewData', 'reviewSources']),
+        description: '基于用户评价分析',
+        isDefault: false,
+        createdBy: 'system'
+      },
+
+      // ========== 人设画像生成 (5个) ==========
+      {
+        name: '人设生成-标准模板',
+        businessModule: 'persona.generate',
+        content: `为产品生成详细的用户画像：
+
+产品信息：{{productInfo}}
+目标市场：{{targetMarket}}
+用户痛点：{{painPoints}}
+
+生成完整Persona，包含：
+1. Demographics（人口统计）
+   - 年龄、性别、职业、收入、教育、地域
+2. Psychographics（心理特征）
+   - 价值观、生活方式、兴趣爱好、性格特点
+3. Goals & Motivations（目标与动机）
+   - 主要目标、购买动机、成功标准
+4. Pain Points & Challenges（痛点与挑战）
+   - 主要痛点、日常挑战、挫折来源
+5. Behaviors（行为习惯）
+   - 购买习惯、决策方式、信息获取渠道
+6. Media Habits（媒体习惯）
+   - 常用平台、内容偏好、活跃时段
+
+JSON：{
+  "personaName": "...",
+  "demographics": {...},
+  "psychographics": {...},
+  "goals": [...],
+  "painPoints": [...],
+  "behaviors": {...},
+  "mediaHabits": {...}
+}`,
+        variables: JSON.stringify(['productInfo', 'targetMarket', 'painPoints']),
+        description: '标准Persona生成',
+        isDefault: true,
+        createdBy: 'system'
+      },
+      {
+        name: '人设生成-多角色',
+        businessModule: 'persona.generate',
+        content: `生成2-3个主要用户角色：
+
+产品：{{productInfo}}
+目标市场：{{targetMarket}}
+
+生成多个Persona，每个包含：
+- 简要描述（一句话）
+- 核心特征
+- 主要痛点
+- 购买动机
+- 差异点
+
+JSON：{
+  "personas": [
+    {"name": "...", "description": "...", "profile": {...}},
     ...
   ]
 }`,
-        variables: JSON.stringify(['productName', 'category', 'targetCountries', 'targetAudience', 'availableStyles']),
-        description: '智能风格推荐',
-        isDefault: true,
-        createdBy: 'system'
-      },
-      {
-        name: '风格匹配-类目优先',
-        businessModule: 'style-matching',
-        content: `基于类目推荐风格：
-
-类目：{{category}}
-子类目：{{subcategory}}
-
-风格库：{{availableStyles}}
-
-优先考虑：
-1. 类目常见风格
-2. 转化率数据
-3. 行业标准
-
-JSON：{"topStyles": [...], "reasons": [...]}`,
-        variables: JSON.stringify(['category', 'subcategory', 'availableStyles']),
-        description: '基于类目匹配',
+        variables: JSON.stringify(['productInfo', 'targetMarket']),
+        description: '多角色Persona生成',
         isDefault: false,
         createdBy: 'system'
       },
       {
-        name: '风格匹配-受众驱动',
-        businessModule: 'style-matching',
-        content: `基于受众特征推荐风格：
+        name: '人设生成-场景驱动',
+        businessModule: 'persona.generate',
+        content: `基于使用场景生成Persona：
 
+产品：{{productInfo}}
+使用场景：{{usageScenarios}}
+场景痛点：{{scenarioPainPoints}}
+
+针对每个场景生成：
+- 典型用户画像
+- 场景触发因素
+- 期望结果
+- 决策障碍
+
+JSON：{
+  "scenarioPersonas": [
+    {
+      "scenario": "...",
+      "persona": {...},
+      "triggers": [...],
+      "expectedOutcomes": [...],
+      "barriers": [...]
+    }
+  ]
+}`,
+        variables: JSON.stringify(['productInfo', 'usageScenarios', 'scenarioPainPoints']),
+        description: '基于场景的Persona',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '人设生成-竞品用户迁移',
+        businessModule: 'persona.generate',
+        content: `分析竞品用户并生成迁移Persona：
+
+我的产品：{{myProduct}}
+竞品信息：{{competitorInfo}}
+竞品用户画像：{{competitorUsers}}
+
+生成内容：
+- 可迁移用户画像
+- 迁移动机
+- 吸引策略
+- 转化障碍
+
+JSON：{
+  "migrationPersona": {...},
+  "motivations": [...],
+  "attractionStrategy": [...],
+  "barriers": [...]
+}`,
+        variables: JSON.stringify(['myProduct', 'competitorInfo', 'competitorUsers']),
+        description: '竞品用户迁移分析',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '人设生成-数据驱动',
+        businessModule: 'persona.generate',
+        content: `基于数据生成精准Persona：
+
+用户数据：{{userData}}
+行为数据：{{behaviorData}}
+反馈数据：{{feedbackData}}
+
+数据驱动分析：
+- 用户细分
+- 行为模式
+- 偏好洞察
+- 价值主张匹配
+
+JSON：{
+  "segments": [...],
+  "behaviorPatterns": {...},
+  "preferences": {...},
+  "valuePropositions": [...]
+}`,
+        variables: JSON.stringify(['userData', 'behaviorData', 'feedbackData']),
+        description: '数据驱动Persona',
+        isDefault: false,
+        createdBy: 'system'
+      },
+
+      // ========== 视频生成 Prompt 生成 (5个) ==========
+      {
+        name: '视频Prompt生成-标准模板',
+        businessModule: 'video-generation',
+        content: `根据以下信息生成视频生成 AI 的 Prompt：
+
+**商品信息：**
+- 商品名称：{{productName}}
+- 商品类目：{{category}}
+- 商品卖点：{{sellingPoints}}
+- 目标受众：{{targetAudience}}
+
+**脚本信息：**
+{{scriptContent}}
+
+**人设信息：**
+{{personaInfo}}
+
+**选用模板/风格：**
+{{templateName}}
+
+**要求：**
+1. 生成一个完整的视频生成 Prompt，适用于 Sora、Runway、Pika 等视频生成 AI
+2. Prompt 应包含：场景描述、视觉风格、镜头运动、氛围、色调等
+3. 突出商品的核心卖点和目标受众的喜好
+4. 保持 Prompt 简洁且有画面感（80-200字）
+
+请直接输出 Prompt 文本，不需要 JSON 格式。`,
+        variables: JSON.stringify(['productName', 'category', 'sellingPoints', 'targetAudience', 'scriptContent', 'personaInfo', 'templateName']),
+        description: '标准视频Prompt生成',
+        isDefault: true,
+        createdBy: 'system'
+      },
+      {
+        name: '视频Prompt生成-视觉强化版',
+        businessModule: 'video-generation',
+        content: `根据商品和脚本生成强调视觉效果的视频 Prompt：
+
+商品：{{productName}}
+卖点：{{sellingPoints}}
+脚本：{{scriptContent}}
+模板风格：{{templateName}}
+
+**视觉强化要求：**
+- 强调光影效果、色彩搭配
+- 突出产品的质感和细节
+- 营造高端的视觉氛围
+- 使用电影级的镜头语言
+
+输出：直接生成可用于视频 AI 的 Prompt（100-250字）`,
+        variables: JSON.stringify(['productName', 'sellingPoints', 'scriptContent', 'templateName']),
+        description: '视觉强化版Prompt',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '视频Prompt生成-简洁版',
+        businessModule: 'video-generation',
+        content: `生成简洁高效的视频 Prompt：
+
+商品：{{productName}}
+核心卖点：{{sellingPoints}}
+目标风格：{{templateName}}
+
+要求：
+- Prompt 控制在 50-100字
+- 只包含最核心的视觉元素
+- 适用于快速生成测试
+
+直接输出 Prompt：`,
+        variables: JSON.stringify(['productName', 'sellingPoints', 'templateName']),
+        description: '简洁快速版',
+        isDefault: false,
+        createdBy: 'system'
+      },
+      {
+        name: '视频Prompt生成-场景化',
+        businessModule: 'video-generation',
+        content: `基于使用场景生成视频 Prompt：
+
+商品：{{productName}}
+使用场景：{{usageScenarios}}
 目标受众：{{targetAudience}}
-年龄段：{{ageGroup}}
-兴趣：{{interests}}
+脚本：{{scriptContent}}
 
-风格选择考虑：
-- 审美偏好
-- 内容消费习惯
-- 平台特点
+**场景化要求：**
+- 构建真实的使用场景
+- 展现用户与产品的互动
+- 营造代入感和共鸣
+- 突出场景中的痛点和解决方案
 
-JSON：{"recommendedStyles": [...], "audienceMatch": {...}}`,
-        variables: JSON.stringify(['targetAudience', 'ageGroup', 'interests']),
-        description: '基于受众匹配',
+输出场景化的视频 Prompt（120-250字）：`,
+        variables: JSON.stringify(['productName', 'usageScenarios', 'targetAudience', 'scriptContent']),
+        description: '场景化Prompt',
         isDefault: false,
         createdBy: 'system'
       },
       {
-        name: '风格匹配-竞品参考',
-        businessModule: 'style-matching',
-        content: `参考竞品推荐风格：
+        name: '视频Prompt生成-多模型适配',
+        businessModule: 'video-generation',
+        content: `生成适配多种视频生成 AI 的 Prompt：
 
-我的产品：{{productName}}
-竞品风格：{{competitorStyles}}
+商品：{{productName}}
+卖点：{{sellingPoints}}
+脚本：{{scriptContent}}
+目标模型：{{targetModel}} (Sora/Runway/Pika/其他)
 
-可选风格：{{availableStyles}}
+**适配策略：**
+- Sora: 强调镜头运动和场景转换
+- Runway: 注重风格控制和特效描述
+- Pika: 简洁直接，突出主体动作
 
-策略：
-- 借鉴成功元素
-- 差异化创新
-- 规避同质化
-
-JSON：{"styles": [...], "differentiationPoints": [...]}`,
-        variables: JSON.stringify(['productName', 'competitorStyles', 'availableStyles']),
-        description: '竞品参考匹配',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '风格匹配-A/B测试',
-        businessModule: 'style-matching',
-        content: `推荐2-3个风格用于A/B测试：
-
-产品：{{productName}}
-类目：{{category}}
-
-推荐策略：
-1个保守安全风格 + 1个创新风格 + 1个差异化风格
-
-JSON：{
-  "safeStyle": {...},
-  "innovativeStyle": {...},
-  "uniqueStyle": {...},
-  "testingStrategy": "..."
-}`,
-        variables: JSON.stringify(['productName', 'category']),
-        description: 'A/B测试风格组合',
+根据目标模型生成最优 Prompt（80-200字）：`,
+        variables: JSON.stringify(['productName', 'sellingPoints', 'scriptContent', 'targetModel']),
+        description: '多模型适配版',
         isDefault: false,
         createdBy: 'system'
       },
 
-      // ========== 视频生成-质量评估 (5个) ==========
-      {
-        name: '质量评估-全面打分',
-        businessModule: 'video-quality',
-        content: `全面评估视频质量：
-
-视频：{{videoTitle}}
-描述：{{videoDescription}}
-时长：{{duration}}秒
-平台：{{platform}}
-
-评估维度（0-100分）：
-1. 内容质量
-2. 视觉效果
-3. 文案吸引力
-4. 受众匹配度
-5. 转化潜力
-
-JSON：{
-  "overallScore": 85,
-  "dimensions": {...},
-  "suggestions": [...]
-}`,
-        variables: JSON.stringify(['videoTitle', 'videoDescription', 'duration', 'platform']),
-        description: '全面质量评估',
-        isDefault: true,
-        createdBy: 'system'
-      },
-      {
-        name: '质量评估-转化导向',
-        businessModule: 'video-quality',
-        content: `评估视频的转化能力：
-
-视频：{{videoTitle}}
-CTA：{{callToAction}}
-平台：{{platform}}
-
-转化要素检查：
-- 钩子效果
-- 痛点触达
-- 信任建立
-- CTA清晰度
-- 紧迫感营造
-
-JSON：{"conversionScore": 0.85, "bottlenecks": [...], "improvements": [...]}`,
-        variables: JSON.stringify(['videoTitle', 'callToAction', 'platform']),
-        description: '转化能力评估',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '质量评估-技术指标',
-        businessModule: 'video-quality',
-        content: `评估视频技术质量：
-
-视频：{{videoTitle}}
-时长：{{duration}}秒
-
-技术指标：
-- 画质清晰度
-- 音频质量
-- 剪辑流畅度
-- 字幕准确性
-- 特效使用
-
-JSON：{"technicalScore": {...}, "issues": [...]}`,
-        variables: JSON.stringify(['videoTitle', 'duration']),
-        description: '技术质量评估',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '质量评估-平台适配',
-        businessModule: 'video-quality',
-        content: `评估视频平台适配度：
-
-视频：{{videoTitle}}
-目标平台：{{platform}}
-
-适配检查：
-- 时长是否合适
-- 画幅比例
-- 节奏快慢
-- 风格匹配
-- 算法友好度
-
-JSON：{"platformFit": 0.9, "optimizations": [...]}`,
-        variables: JSON.stringify(['videoTitle', 'platform']),
-        description: '平台适配评估',
-        isDefault: false,
-        createdBy: 'system'
-      },
-      {
-        name: '质量评估-快速诊断',
-        businessModule: 'video-quality',
-        content: `10秒快速诊断视频问题：
-
-视频：{{videoTitle}}
-
-快速检查：
-- 开场是否抓人
-- 核心信息是否清晰
-- CTA是否明确
-
-JSON：{"quickScore": 0.8, "criticalIssues": [...], "quickFixes": [...]}`,
-        variables: JSON.stringify(['videoTitle']),
-        description: '快速诊断版',
-        isDefault: false,
-        createdBy: 'system'
-      }
     ];
 
     // 为每个模板创建（允许同一模块多个模板）
@@ -579,10 +828,20 @@ JSON：{"quickScore": 0.8, "criticalIssues": [...], "quickFixes": [...]}`,
       }
     }
 
+    const createdCount = results.filter(r => r.status === 'created').length;
+    const modules = {
+      'product-analysis': 5,
+      'competitor-analysis': 5,
+      'persona.generate': 5,
+      'video-script': 5,
+      'video-generation': 5
+    };
+    
     return NextResponse.json({
       success: true,
       data: results,
-      message: `成功初始化 ${results.filter(r => r.status === 'created').length} 个默认模板（共${defaultPrompts.length}个模板）`
+      message: `成功初始化 ${createdCount} 个默认模板（共${defaultPrompts.length}个模板，覆盖5个业务模块）`,
+      modules
     });
   } catch (error: any) {
     console.error('初始化默认Prompt模板失败:', error);

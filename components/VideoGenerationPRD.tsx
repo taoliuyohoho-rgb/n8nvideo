@@ -64,12 +64,14 @@ export default function VideoGenerationPRD() {
 
     setSubmittingAnalysis(true);
     try {
-      const response = await fetch('/api/product/analyze', {
+      const response = await fetch('/api/product/manual-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productId: product.id,
-          analysisText: analysisText.trim(),
+          sellingPoints: [],
+          painPoints: [],
+          targetAudience: analysisText.trim(),
         }),
       });
 
@@ -309,10 +311,10 @@ ${script.shots.map((shot: any) => `[${shot.second}s] ${shot.camera} | ${shot.act
       {/* 2. 商品信息（自动展开） */}
       {product && top5 && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-500" />
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-500" />
                 商品信息
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => {
@@ -321,38 +323,38 @@ ${script.shots.map((shot: any) => `[${shot.second}s] ${shot.camera} | ${shot.act
                 setPersona(null);
                 setScript(null);
               }}>
-                <Edit2 className="w-4 h-4 mr-1" />
+                <Edit2 className="w-3 h-3 mr-1" />
                 重新选择
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <CardContent className="space-y-2">
+            <div className="flex gap-4 text-xs">
               <div>
                 <span className="text-gray-500">商品:</span>
-                <p className="font-medium">{product.name}</p>
+                <span className="font-medium ml-1">{product.name}</span>
               </div>
               <div>
                 <span className="text-gray-500">类目:</span>
-                <p className="font-medium">{product.category}</p>
+                <span className="font-medium ml-1">{product.category}</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-50 border border-green-200 rounded p-3">
-                <h4 className="text-xs font-semibold text-green-700 mb-2">Top5 卖点</h4>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-green-50 border border-green-200 rounded p-2">
+                <h4 className="text-xs font-semibold text-green-700 mb-1">Top5 卖点</h4>
                 <div className="flex flex-wrap gap-1">
                   {top5.sellingPoints.map((point: string, i: number) => (
-                    <Badge key={i} variant="secondary" className="text-xs">{i + 1}. {point}</Badge>
+                    <Badge key={i} variant="secondary" className="text-xs py-0 px-1">{i + 1}. {point}</Badge>
                   ))}
                 </div>
               </div>
               
-              <div className="bg-orange-50 border border-orange-200 rounded p-3">
-                <h4 className="text-xs font-semibold text-orange-700 mb-2">Top5 痛点</h4>
+              <div className="bg-orange-50 border border-orange-200 rounded p-2">
+                <h4 className="text-xs font-semibold text-orange-700 mb-1">Top5 痛点</h4>
                 <div className="flex flex-wrap gap-1">
                   {top5.painPoints.map((point: string, i: number) => (
-                    <Badge key={i} variant="outline" className="text-xs">{i + 1}. {point}</Badge>
+                    <Badge key={i} variant="outline" className="text-xs py-0 px-1">{i + 1}. {point}</Badge>
                   ))}
                 </div>
               </div>
@@ -361,39 +363,13 @@ ${script.shots.map((shot: any) => `[${shot.second}s] ${shot.camera} | ${shot.act
         </Card>
       )}
 
-      {/* 3. 商品分析（可选，折叠） */}
+      {/* 3. 生成人设 */}
       {product && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600">自定义商品分析（可选）</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-2">
-              <textarea
-                value={analysisText}
-                onChange={(e) => setAnalysisText(e.target.value)}
-                placeholder="添加您对商品的分析..."
-                className="flex-1 p-2 border rounded text-sm min-h-[60px]"
-              />
-              <Button 
-                onClick={handleSubmitAnalysis} 
-                disabled={submittingAnalysis || !analysisText.trim()}
-                size="sm"
-              >
-                {submittingAnalysis ? <Loader2 className="w-4 h-4 animate-spin" /> : '提交'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 4. 生成人设 */}
-      {product && (
-        <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-500" />
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-500" />
                 UGC创作者人设
               </CardTitle>
               <Button 
@@ -407,49 +383,42 @@ ${script.shots.map((shot: any) => `[${shot.second}s] ${shot.camera} | ${shot.act
             </div>
           </CardHeader>
           {persona && (
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                  <h4 className="text-xs font-semibold text-blue-700 mb-2">核心身份</h4>
-                  <div className="text-xs space-y-1">
-                    <p><strong>{persona.coreIdentity.name}</strong> · {persona.coreIdentity.age}岁</p>
-                    <p>{persona.coreIdentity.occupation}</p>
-                    <p className="text-gray-600">{persona.coreIdentity.location}</p>
-                  </div>
+            <CardContent className="space-y-2">
+              <div className="flex items-start gap-2 text-xs">
+                <div className="flex-1 bg-blue-50 border border-blue-200 rounded p-2">
+                  <span className="font-semibold text-blue-700">核心身份: </span>
+                  <span className="text-gray-700">
+                    <strong>{persona.coreIdentity.name}</strong> · {persona.coreIdentity.age}岁 · {persona.coreIdentity.occupation} · {persona.coreIdentity.location}
+                  </span>
                 </div>
-                
-                <div className="bg-purple-50 border border-purple-200 rounded p-3">
-                  <h4 className="text-xs font-semibold text-purple-700 mb-2">外观风格</h4>
-                  <p className="text-xs text-gray-700">{persona.look.generalAppearance}</p>
-                  <p className="text-xs text-gray-600 mt-1">{persona.look.clothingAesthetic}</p>
-                </div>
-                
-                <div className="bg-pink-50 border border-pink-200 rounded p-3">
-                  <h4 className="text-xs font-semibold text-pink-700 mb-2">性格特质</h4>
-                  <div className="flex flex-wrap gap-1">
-                    {persona.vibe.traits.slice(0, 4).map((trait: string, i: number) => (
-                      <Badge key={i} variant="secondary" className="text-xs">{trait}</Badge>
-                    ))}
-                  </div>
+                <div className="flex-1 bg-purple-50 border border-purple-200 rounded p-2">
+                  <span className="font-semibold text-purple-700">外观风格: </span>
+                  <span className="text-gray-700">{persona.look.generalAppearance}，{persona.look.clothingAesthetic}</span>
                 </div>
               </div>
               
-              <div className="bg-green-50 border border-green-200 rounded p-3">
-                <h4 className="text-xs font-semibold text-green-700 mb-1">💡 可信度理由</h4>
-                <p className="text-xs text-gray-700">{persona.why}</p>
+              <div className="flex items-start gap-2 text-xs">
+                <div className="flex-1 bg-pink-50 border border-pink-200 rounded p-2">
+                  <span className="font-semibold text-pink-700">性格特质: </span>
+                  <span className="text-gray-700">{persona.vibe.traits.slice(0, 4).join('、')}</span>
+                </div>
+                <div className="flex-1 bg-green-50 border border-green-200 rounded p-2">
+                  <span className="font-semibold text-green-700">💡 可信度: </span>
+                  <span className="text-gray-700">{persona.why}</span>
+                </div>
               </div>
             </CardContent>
           )}
         </Card>
       )}
 
-      {/* 5. 生成脚本 */}
+      {/* 4. 生成脚本 */}
       {persona && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Play className="w-5 h-5 text-amber-500" />
+              <CardTitle className="text-base flex items-center gap-2">
+                <Play className="w-4 h-4 text-amber-500" />
                 15秒UGC脚本
               </CardTitle>
               <div className="flex gap-2">
@@ -509,11 +478,11 @@ ${script.shots.map((shot: any) => `[${shot.second}s] ${shot.camera} | ${shot.act
         </Card>
       )}
 
-      {/* 6. 视频生成 */}
+      {/* 5. 视频生成 */}
       {script && scriptId && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">视频生成</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">视频生成</CardTitle>
           </CardHeader>
           <CardContent>
             {!videoJob && (

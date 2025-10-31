@@ -1,338 +1,343 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import { withTraceId } from '@/src/middleware/traceId'
-import { createApiLogger } from '@/src/services/logger/Logger'
-import { recommendRank } from '@/src/services/recommendation/recommend'
-import '@/src/services/recommendation/index'
-import { callModel } from '@/src/services/ai/rules'
-import { filterProductInfo } from '../../../../src/utils/productInfoFilter'
-import type { ProductContext } from '../../../../src/services/recommendation/scorers/productInfoMatcher'
+import { prisma } from '@/lib/prisma'
+import { aiExecutor } from '@/src/services/ai/AiExecutor'
+import type { PersonaGenerationRequest, PersonaContent } from '@/types/persona'
 
-const prisma = new PrismaClient()
-
-/**
- * 人设生成 API
- * 根据商品信息生成理想的 UGC 创作者人设
- */
-async function handler(request: NextRequest, traceId: string) {
-  const log = createApiLogger(traceId, 'persona-generate')
-
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { productId, overrides } = body
+    const { 
+      categoryId, 
+      productId, 
+      textDescription, 
+      aiModel, 
+      promptTemplate,
+      variantIndex = 0, // 🆕 支持变体索引，用于生成不同的人设
+      targetCountry 
+    } = body
 
-    // 校验输入
-    if (!productId) {
-      log.warn('Missing productId')
-      return NextResponse.json(
-        { success: false, error: '商品ID必填', traceId },
-        { status: 400 }
-      )
+    // 获取商品信息（如果提供了productId）
+    let product: any = null
+    if (productId) {
+      product = await prisma.product.findUnique({ where: { id: productId } })
     }
 
-    log.info('Generating persona', { productId })
+    // 允许缺少 categoryId：若缺失则通过商品类目名回填/创建
+    let effectiveCategoryId: string | null = categoryId || (product?.categoryId ?? null)
+    let category: any = null
+    if (effectiveCategoryId) {
+      category = await prisma.category.findUnique({ where: { id: effectiveCategoryId } })
+    }
+    if (!category) {
+      const categoryName = (product?.category as string) || '未分类'
+      const cat = await prisma.category.upsert({
+        where: { name: categoryName },
+        update: {},
+        create: { name: categoryName }
+      })
+      effectiveCategoryId = cat.id
+      category = cat
+    }
 
-    // 1. 获取商品信息
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-      select: {
-        id: true,
-        name: true,
-        category: true,
-        subcategory: true,
-        description: true,
-        sellingPoints: true,
-        painPoints: true,
-        targetAudience: true,
-        targetCountries: true
-      }
+    // 获取Prompt模板
+    const template = await prisma.promptTemplate.findUnique({
+      where: { id: promptTemplate }
     })
 
-    if (!product) {
-      log.warn('Product not found', { productId })
+    if (!template) {
       return NextResponse.json(
-        { success: false, error: '商品不存在', traceId },
+        { success: false, error: 'Prompt模板不存在' },
         { status: 404 }
       )
     }
 
-    // 2. 解析商品数据
-    const rawSellingPoints = product.sellingPoints ? JSON.parse(product.sellingPoints as string) : []
-    const rawPainPoints = product.painPoints ? JSON.parse(product.painPoints as string) : []
-    const targetCountries = product.targetCountries ? JSON.parse(product.targetCountries as string) : []
-    const rawTargetAudiences = product.targetAudience ? JSON.parse(product.targetAudience as string) : []
+    // 构建生成Prompt
+    let prompt = template.content
+
+    // 🆕 添加变体提示语，增加多样性
+    const variantPrompts = [
+      '', // 默认不添加
+      '\n\n请生成一个年轻群体的人设（18-30岁）。',
+      '\n\n请生成一个中年群体的人设（30-45岁）。',
+      '\n\n请生成一个高收入群体的人设。',
+      '\n\n请生成一个注重性价比的人设。',
+      '\n\n请生成一个追求时尚潮流的人设。'
+    ]
     
-    // 3. 使用推荐引擎筛选最匹配的前5个卖点、痛点和目标受众
-    const productContext: ProductContext = {
-      productName: product.name || '未知商品',
-      category: product.category || '未分类',
-      subcategory: product.subcategory || undefined,
-      description: product.description || undefined,
-      targetCountries: Array.isArray(targetCountries) ? targetCountries : [],
-      existingSellingPoints: rawSellingPoints,
-      existingPainPoints: rawPainPoints,
-      existingTargetAudience: rawTargetAudiences
-    }
-    
-    const filteredInfo = await filterProductInfo(
-      rawSellingPoints,
-      rawPainPoints,
-      rawTargetAudiences,
-      productContext,
-      {
-        maxSellingPoints: 5,
-        maxPainPoints: 5,
-        maxTargetAudience: 5,
-        enableDeduplication: true,
-        enableRelevanceScoring: true
-      }
-    )
-    
-    const sellingPoints = filteredInfo.sellingPoints
-    const painPoints = filteredInfo.painPoints
-    const targetAudiences = filteredInfo.targetAudience
-
-    // 3. 推荐Prompt模板
-    const promptRecommendation = await recommendRank({
-      scenario: 'task->prompt',
-      task: { 
-        taskType: 'persona-generation', 
-        contentType: 'text',
-        jsonRequirement: true
-      },
-      context: { 
-        region: targetCountries[0] || 'US',
-        channel: 'general'
-      },
-      constraints: { maxLatencyMs: 8000 }
-    })
-
-    log.info('Prompt recommendation received', { 
-      chosenId: promptRecommendation.chosen.id,
-      decisionId: promptRecommendation.decisionId
-    })
-
-    // 4. 获取选中的Prompt模板
-    const promptTemplate = await prisma.promptTemplate.findUnique({
-      where: { id: promptRecommendation.chosen.id }
-    })
-
-    if (!promptTemplate) {
-      log.error('Prompt template not found', { templateId: promptRecommendation.chosen.id })
-      return NextResponse.json(
-        { success: false, error: 'Prompt模板不存在', traceId },
-        { status: 404 }
-      )
+    if (variantIndex > 0 && variantIndex < variantPrompts.length) {
+      prompt += variantPrompts[variantIndex]
     }
 
-    // 5. 推荐AI模型
-    const modelRecommendation = await recommendRank({
-      scenario: 'task->model',
-      task: { 
-        taskType: 'persona-generation', 
-        contentType: 'text',
-        jsonRequirement: true
-      },
-      context: { 
-        region: targetCountries[0] || 'US',
-        channel: 'general'
-      },
-      constraints: { maxLatencyMs: 8000 }
+    // 替换变量
+    const variables = {
+      category: category.name,
+      targetMarket: targetCountry || category.targetMarket || '全球市场',
+      productInfo: `商品名称：${product?.name || ''}\n商品描述：${product?.description || ''}\n卖点：${product?.sellingPoints ? 
+        (Array.isArray(product.sellingPoints) ? 
+          product.sellingPoints.join(', ') : 
+          JSON.stringify(product.sellingPoints)) : ''}`,
+      textDescription: textDescription || ''
+    }
+
+    // 替换模板中的变量
+    Object.entries(variables).forEach(([key, value]) => {
+      const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g')
+      prompt = prompt.replace(regex, value)
     })
 
-    log.info('Model recommendation received', { 
-      chosenId: modelRecommendation.chosen.id,
-      decisionId: modelRecommendation.decisionId
-    })
+    // 调用AI生成人设
+    let aiResponse: string
+    try {
+      const idLower = (aiModel || '').toLowerCase()
+      const provider = idLower.includes('gemini') ? 'gemini'
+        : (idLower.includes('doubao') || (aiModel || '').includes('字节')) ? 'doubao'
+        : idLower.includes('deepseek') ? 'deepseek'
+        : idLower.includes('claude') ? 'claude'
+        : 'openai'
 
-    // 6. 构建Prompt
-    const promptText = buildPersonaPrompt(promptTemplate.content, {
-      productName: product.name,
-      country: targetCountries[0] || 'US',
-      targetAudiences: targetAudiences.join(', '),
-      sellingPointsTop5: sellingPoints.join(', '),
-      painPointsTop5: painPoints.join(', ')
-    })
+      console.log('AI调用参数:', { provider, aiModel, promptLength: prompt.length })
+      console.log('Prompt内容:', prompt.substring(0, 200) + '...')
 
-    // 7. 调用AI生成人设
-    const aiResult = await callModel({
-      prompt: promptText,
-      task: 'persona-generation',
-      evidenceMode: true,
-      schema: getPersonaSchema()
-    })
-
-    if (!aiResult.success || !aiResult.data) {
-      log.error('AI generation failed', { error: aiResult.error })
+      aiResponse = await aiExecutor.execute({
+        provider,
+        prompt: prompt,
+        useSearch: false
+      })
+      
+      console.log('AI响应长度:', aiResponse.length)
+      console.log('AI响应内容:', aiResponse.substring(0, 200) + '...')
+    } catch (error) {
+      console.error('AI执行失败:', error)
       return NextResponse.json(
-        { success: false, error: '人设生成失败', traceId },
+        { success: false, error: 'AI生成失败: ' + (error instanceof Error ? error.message : '未知错误') },
         { status: 500 }
       )
     }
 
-    // 8. 验证和清理数据
-    const persona = validateAndCleanPersona(aiResult.data, overrides)
-
-    // 9. 记录反馈
+    // 解析AI返回的内容
+    let generatedContent: PersonaContent
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/recommend/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          decisionId: promptRecommendation.decisionId,
-          eventType: 'execute_complete',
-          payload: {
-            chosenId: promptRecommendation.chosen.id,
-            success: true,
-            latencyMs: 0 // 实际应该记录真实耗时
+      console.log('开始解析AI响应...')
+      console.log('AI响应内容:', aiResponse.substring(0, 500) + '...')
+      
+      // 尝试解析JSON
+      const jsonMatch = aiResponse?.match(/\{[\s\S]*\}/)
+      console.log('JSON匹配结果:', jsonMatch ? '找到JSON' : '未找到JSON')
+      if (jsonMatch) {
+        console.log('解析JSON:', jsonMatch[0].substring(0, 200) + '...')
+        const parsed = JSON.parse(jsonMatch[0])
+        console.log('JSON解析成功，内容:', Object.keys(parsed))
+        
+        // 转换AI返回的格式到期望的格式
+        if (parsed.coreIdentity) {
+          generatedContent = {
+            basicInfo: {
+              age: parsed.coreIdentity.age?.toString() || '25-35',
+              gender: parsed.coreIdentity.gender || '不限',
+              occupation: parsed.coreIdentity.occupation || '专业人士',
+              income: '中等收入',
+              location: parsed.coreIdentity.location || '城市'
+            },
+            behavior: {
+              purchaseHabits: '注重品质和性价比',
+              usageScenarios: '日常使用',
+              decisionFactors: '品质、价格、品牌',
+              brandPreference: '注重口碑和评价'
+            },
+            preferences: {
+              priceSensitivity: '中等',
+              featureNeeds: ['品质', '功能', '设计'],
+              qualityExpectations: '高品质',
+              serviceExpectations: '专业服务'
+            },
+            psychology: {
+              values: parsed.context?.values ? [parsed.context.values] : ['品质', '效率', '创新'],
+              lifestyle: '现代都市生活',
+              painPoints: parsed.context?.frustrations ? [parsed.context.frustrations] : ['时间紧张', '品质要求高'],
+              motivations: ['提升生活品质', '追求效率']
+            }
           }
-        })
-      })
-    } catch (error) {
-      log.warn('Failed to record feedback', { error })
+          console.log('转换成功，使用AI生成的内容')
+        } else {
+          throw new Error('AI返回的JSON格式不正确')
+        }
+      } else {
+        console.log('无法解析JSON，使用默认结构')
+        // 如果无法解析JSON，使用默认结构
+        generatedContent = {
+          basicInfo: {
+            age: '25-35',
+            gender: '不限',
+            occupation: '专业人士',
+            income: '中等收入',
+            location: '城市'
+          },
+          behavior: {
+            purchaseHabits: '注重品质和性价比',
+            usageScenarios: '日常使用',
+            decisionFactors: '品质、价格、品牌',
+            brandPreference: '注重口碑和评价'
+          },
+          preferences: {
+            priceSensitivity: '中等',
+            featureNeeds: ['品质', '功能', '设计'],
+            qualityExpectations: '高品质',
+            serviceExpectations: '专业服务'
+          },
+          psychology: {
+            values: ['品质', '效率', '创新'],
+            lifestyle: '现代都市生活',
+            painPoints: ['时间紧张', '品质要求高'],
+            motivations: ['提升生活品质', '追求效率']
+          }
+        }
+      }
+    } catch (parseError) {
+      console.error('解析AI响应失败:', parseError)
+      // 使用默认结构
+      generatedContent = {
+        basicInfo: {
+          age: '25-35',
+          gender: '不限',
+          occupation: '专业人士',
+          income: '中等收入',
+          location: '城市'
+        },
+        behavior: {
+          purchaseHabits: '注重品质和性价比',
+          usageScenarios: '日常使用',
+          decisionFactors: '品质、价格、品牌',
+          brandPreference: '注重口碑和评价'
+        },
+        preferences: {
+          priceSensitivity: '中等',
+          featureNeeds: ['品质', '功能', '设计'],
+          qualityExpectations: '高品质',
+          serviceExpectations: '专业服务'
+        },
+        psychology: {
+          values: ['品质', '效率', '创新'],
+          lifestyle: '现代都市生活',
+          painPoints: ['时间紧张', '品质要求高'],
+          motivations: ['提升生活品质', '追求效率']
+        }
+      }
     }
 
-    log.info('Persona generated successfully', { 
-      productId,
-      personaName: persona.coreIdentity.name
-    })
-
-    // 从 modelRecommendation.chosen.name 解析 provider 和 model
-    const [provider, model] = (modelRecommendation.chosen.name || modelRecommendation.chosen.title || '').split('/')
-
-    return NextResponse.json({
-      success: true,
-      persona,
-      modelUsed: {
-        provider: provider || 'unknown',
-        model: model || modelRecommendation.chosen.name || 'unknown',
-        promptTemplate: promptTemplate.name
+    // 🆕 保存人设到数据库
+    try {
+      console.log('开始保存人设到数据库...')
+      
+      // 从AI生成的内容中提取人设信息
+      const jsonMatch = aiResponse?.match(/\{[\s\S]*\}/)
+      let parsedAI: any = {}
+      
+      if (jsonMatch) {
+        try {
+          parsedAI = JSON.parse(jsonMatch[0])
+        } catch (e) {
+          console.warn('无法解析AI响应为JSON:', e)
+        }
       }
-    })
+      
+      // 构建数据库人设对象
+      const personaData = {
+        productId: productId || null,
+        categoryId: effectiveCategoryId,
+        name: parsedAI.coreIdentity?.name || `${category?.name || '用户'}人设${variantIndex > 0 ? variantIndex : ''}`,
+        coreIdentity: parsedAI.coreIdentity || {
+          name: parsedAI.coreIdentity?.name || generatedContent.basicInfo?.occupation || '用户',
+          age: typeof generatedContent.basicInfo?.age === 'string' ? 
+            parseInt(generatedContent.basicInfo.age.split('-')[0]) : 25,
+          gender: generatedContent.basicInfo?.gender || '不限',
+          location: generatedContent.basicInfo?.location || '城市',
+          occupation: generatedContent.basicInfo?.occupation || '专业人士'
+        },
+        look: parsedAI.look || {
+          generalAppearance: '现代都市',
+          hair: '整洁',
+          clothingAesthetic: '商务休闲',
+          signatureDetails: '简约时尚'
+        },
+        vibe: parsedAI.vibe || {
+          traits: generatedContent.psychology?.values || ['专业', '效率'],
+          demeanor: '亲和',
+          communicationStyle: '清晰直接'
+        },
+        context: parsedAI.context || {
+          hobbies: generatedContent.preferences?.featureNeeds?.join('、') || '品质生活',
+          values: generatedContent.psychology?.values?.join('、') || '品质、效率',
+          frustrations: generatedContent.psychology?.painPoints?.join('、') || '时间紧张',
+          homeEnvironment: '现代简约'
+        },
+        generatedContent: generatedContent,
+        source: 'ai-generated',
+        status: 'active',
+        metadata: JSON.stringify({
+          aiModel: aiModel,
+          promptTemplate: promptTemplate,
+          variantIndex: variantIndex,
+          generatedAt: new Date().toISOString()
+        })
+      }
+      
+      const savedPersona = await prisma.persona.create({
+        data: personaData,
+        include: {
+          product: {
+            select: { id: true, name: true, category: true, subcategory: true }
+          }
+        }
+      })
+      
+      console.log('✅ 人设保存成功:', savedPersona.id)
+      
+      return NextResponse.json({
+        success: true,
+        data: {
+          persona: savedPersona // 返回完整的数据库对象
+        }
+      })
+    } catch (saveError) {
+      console.error('❌ 保存人设失败:', saveError)
+      
+      // 即使保存失败，也返回生成的内容（但标记未保存）
+      return NextResponse.json({
+        success: true,
+        data: {
+          persona: {
+            coreIdentity: {
+              name: generatedContent.basicInfo?.occupation || '用户',
+              age: typeof generatedContent.basicInfo?.age === 'string' ? 
+                parseInt(generatedContent.basicInfo.age.split('-')[0]) : 25,
+              gender: generatedContent.basicInfo?.gender || '不限',
+              location: generatedContent.basicInfo?.location || '城市',
+              occupation: generatedContent.basicInfo?.occupation || '专业人士'
+            },
+            look: {},
+            vibe: {
+              communicationStyle: '清晰直接'
+            },
+            context: {
+              hobbies: '品质生活',
+              values: '品质、效率'
+            },
+            generatedContent,
+            _unsaved: true // 标记未保存
+          }
+        },
+        warning: '人设生成成功但保存失败'
+      })
+    }
 
   } catch (error) {
-    log.error('Failed to generate persona', error)
-    
+    console.error('人设生成失败:', error)
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : '人设生成失败',
-        traceId
+      { 
+        success: false, 
+        error: '人设生成失败: ' + (error instanceof Error ? error.message : '未知错误')
       },
       { status: 500 }
     )
   }
 }
-
-/**
- * 构建人设生成Prompt
- */
-function buildPersonaPrompt(template: string, variables: {
-  productName: string
-  country: string
-  targetAudiences: string
-  sellingPointsTop5: string
-  painPointsTop5: string
-}): string {
-  return template
-    .replace(/\{\{productName\}\}/g, variables.productName)
-    .replace(/\{\{country\}\}/g, variables.country)
-    .replace(/\{\{targetAudiences\}\}/g, variables.targetAudiences)
-    .replace(/\{\{sellingPointsTop5\}\}/g, variables.sellingPointsTop5)
-    .replace(/\{\{painPointsTop5\}\}/g, variables.painPointsTop5)
-}
-
-/**
- * 获取人设Schema定义
- */
-function getPersonaSchema() {
-  return {
-    type: "object",
-    properties: {
-      coreIdentity: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          age: { type: "number" },
-          gender: { type: "string" },
-          location: { type: "string" },
-          occupation: { type: "string" }
-        },
-        required: ["name", "age", "gender", "location", "occupation"]
-      },
-      look: {
-        type: "object",
-        properties: {
-          generalAppearance: { type: "string" },
-          hair: { type: "string" },
-          clothingAesthetic: { type: "string" },
-          signatureDetails: { type: "string" }
-        },
-        required: ["generalAppearance", "hair", "clothingAesthetic", "signatureDetails"]
-      },
-      vibe: {
-        type: "object",
-        properties: {
-          traits: { type: "array", items: { type: "string" } },
-          demeanor: { type: "string" },
-          communicationStyle: { type: "string" }
-        },
-        required: ["traits", "demeanor", "communicationStyle"]
-      },
-      context: {
-        type: "object",
-        properties: {
-          hobbies: { type: "string" },
-          values: { type: "string" },
-          frustrations: { type: "string" },
-          homeEnvironment: { type: "string" }
-        },
-        required: ["hobbies", "values", "frustrations", "homeEnvironment"]
-      },
-      why: { type: "string" }
-    },
-    required: ["coreIdentity", "look", "vibe", "context", "why"]
-  }
-}
-
-/**
- * 验证和清理人设数据
- */
-function validateAndCleanPersona(data: any, overrides?: any): any {
-  const persona = {
-    coreIdentity: {
-      name: data.coreIdentity?.name || 'Alex',
-      age: data.coreIdentity?.age || 28,
-      gender: data.coreIdentity?.gender || 'non-binary',
-      location: data.coreIdentity?.location || 'Urban area',
-      occupation: data.coreIdentity?.occupation || 'Professional'
-    },
-    look: {
-      generalAppearance: data.look?.generalAppearance || 'Clean and approachable',
-      hair: data.look?.hair || 'Well-groomed',
-      clothingAesthetic: data.look?.clothingAesthetic || 'Casual professional',
-      signatureDetails: data.look?.signatureDetails || 'Friendly smile'
-    },
-    vibe: {
-      traits: Array.isArray(data.vibe?.traits) ? data.vibe.traits : ['friendly', 'authentic', 'reliable'],
-      demeanor: data.vibe?.demeanor || 'Warm and approachable',
-      communicationStyle: data.vibe?.communicationStyle || 'Clear and conversational'
-    },
-    context: {
-      hobbies: data.context?.hobbies || 'Various interests',
-      values: data.context?.values || 'Quality and authenticity',
-      frustrations: data.context?.frustrations || 'Common daily challenges',
-      homeEnvironment: data.context?.homeEnvironment || 'Comfortable living space'
-    },
-    why: data.why || 'Experienced user with genuine insights'
-  }
-
-  // 应用覆盖
-  if (overrides) {
-    Object.assign(persona, overrides)
-  }
-
-  return persona
-}
-
-export const POST = withTraceId(handler)

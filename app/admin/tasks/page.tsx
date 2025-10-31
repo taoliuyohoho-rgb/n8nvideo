@@ -52,20 +52,28 @@ export default function TasksPage() {
       if (filterStatus !== 'all') params.append('status', filterStatus)
       params.append('limit', '100')
 
-      console.log('Fetching tasks with params:', params.toString())
+      console.log('[TasksPage] Fetching tasks with params:', params.toString())
       const response = await fetch(`/api/tasks?${params}`)
+      
+      if (!response.ok) {
+        console.error('[TasksPage] HTTP error:', response.status, response.statusText)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
       const result = await response.json()
       
-      console.log('Tasks API response:', result)
+      console.log('[TasksPage] Tasks API response:', result)
       
       if (result.success) {
         setTasks(result.data.tasks)
-        console.log('Tasks set:', result.data.tasks.length)
+        console.log('[TasksPage] Tasks set successfully:', result.data.tasks.length)
       } else {
-        console.error('API returned error:', result.error)
+        console.error('[TasksPage] API returned error:', result.error)
+        alert(`获取任务失败: ${result.error}`)
       }
     } catch (error) {
-      console.error('Failed to fetch tasks:', error)
+      console.error('[TasksPage] Failed to fetch tasks:', error)
+      alert(`获取任务失败: ${error instanceof Error ? error.message : '未知错误'}`)
     } finally {
       setLoading(false)
     }
@@ -113,6 +121,7 @@ export default function TasksPage() {
 
   // 初始加载
   useEffect(() => {
+    console.log('[TasksPage] Component mounted, fetching tasks...')
     fetchTasks()
   }, [filterType, filterStatus])
 
@@ -221,9 +230,25 @@ export default function TasksPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {tasks.length === 0 ? (
+              {loading ? (
                 <div className="text-center text-gray-500 py-8">
-                  暂无任务
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+                  <p>加载中...</p>
+                </div>
+              ) : tasks.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  <p className="text-lg mb-2">暂无任务</p>
+                  <p className="text-sm">当前筛选条件: 类型={filterType}, 状态={filterStatus}</p>
+                  <Button 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={() => {
+                      setFilterType('all')
+                      setFilterStatus('all')
+                    }}
+                  >
+                    重置筛选条件
+                  </Button>
                 </div>
               ) : (
                 tasks.map((task) => (

@@ -3,7 +3,7 @@
  * 轻量打分，保留Top-M候选
  */
 
-import { ModelRecord, TaskInput, FeatureSnapshot, ScoringWeights } from './types';
+import type { ModelRecord, TaskInput, FeatureSnapshot, ScoringWeights } from './types';
 import { DEFAULT_COARSE_WEIGHTS } from './constants';
 
 /**

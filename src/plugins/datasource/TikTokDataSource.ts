@@ -1,4 +1,4 @@
-import { Plugin } from '../../core/types'
+import type { Plugin } from '../../core/types'
 
 export interface TikTokConfig {
   accessToken: string

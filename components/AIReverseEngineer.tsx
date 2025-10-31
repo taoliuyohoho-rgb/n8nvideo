@@ -7,9 +7,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Upload, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
+import type { MediaFile } from '@/components/MultiMediaInput';
+import { MultiMediaInput } from '@/components/MultiMediaInput';
 
 interface AIReverseEngineerProps {
   businessModule: string;
@@ -46,7 +48,7 @@ interface PromptDraft {
 
 export function AIReverseEngineer({ businessModule, onSuccess }: AIReverseEngineerProps) {
   const [referenceExample, setReferenceExample] = useState<string>('');
-  const [exampleType, setExampleType] = useState<string>('');
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recommendations, setRecommendations] = useState<Recommendation | null>(null);
   const [chosenModelId, setChosenModelId] = useState<string>('');
@@ -55,27 +57,15 @@ export function AIReverseEngineer({ businessModule, onSuccess }: AIReverseEngine
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState(false);
 
-  // 文件上传处理
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setReferenceExample(e.target?.result as string);
-      };
-      reader.readAsText(file);
-    }
+  // 处理媒体文件变化
+  const handleMediaChange = (files: MediaFile[]) => {
+    setMediaFiles(files);
   };
 
   // 分析参考实例并获取推荐
   const handleAnalyze = async () => {
-    if (!referenceExample.trim()) {
-      setError('请输入参考实例');
-      return;
-    }
-
-    if (!exampleType) {
-      setError('请选择实例类型');
+    if (!referenceExample.trim() && mediaFiles.length === 0) {
+      setError('请输入参考实例或上传文件');
       return;
     }
 
@@ -86,8 +76,17 @@ export function AIReverseEngineer({ businessModule, onSuccess }: AIReverseEngine
       // 1. 获取推荐
       const formData = new FormData();
       formData.append('businessModule', businessModule);
-      formData.append('exampleType', exampleType);
+      formData.append('exampleType', 'auto'); // 自动识别类型
       formData.append('referenceExample', referenceExample);
+      
+      // 添加媒体文件
+      mediaFiles.forEach((file, index) => {
+        if (file.file) {
+          formData.append(`mediaFile_${index}`, file.file);
+        }
+        formData.append(`mediaType_${index}`, file.type);
+        formData.append(`mediaName_${index}`, file.name);
+      });
 
       const response = await fetch('/api/admin/prompts/reverse-engineer/analyze', {
         method: 'POST',
@@ -181,7 +180,7 @@ export function AIReverseEngineer({ businessModule, onSuccess }: AIReverseEngine
         // 3秒后重置
         setTimeout(() => {
           setReferenceExample('');
-          setExampleType('');
+          setMediaFiles([]);
           setRecommendations(null);
           setPromptDraft(null);
           setSuccess(false);
@@ -200,50 +199,16 @@ export function AIReverseEngineer({ businessModule, onSuccess }: AIReverseEngine
     <div className="space-y-4">
       {/* 输入区域 */}
       <div className="space-y-4">
-        <div>
-          <Label htmlFor="example-type">实例类型</Label>
-          <Select value={exampleType} onValueChange={setExampleType}>
-            <SelectTrigger id="example-type" className="mt-1">
-              <SelectValue placeholder="选择实例类型" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="text">文本</SelectItem>
-              <SelectItem value="image">图片</SelectItem>
-              <SelectItem value="video">视频</SelectItem>
-              <SelectItem value="general">通用</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
 
-        <div>
-          <Label htmlFor="reference-example">参考实例</Label>
-          <Textarea
-            id="reference-example"
-            placeholder="输入现有的卖点、痛点、目标受众、Prompt脚本、视频描述等..."
-            value={referenceExample}
-            onChange={(e) => setReferenceExample(e.target.value)}
-            rows={6}
-            className="mt-1"
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <Input
-              type="file"
-              accept=".txt,.doc,.docx,.pdf"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="file-upload"
-            />
-            <label htmlFor="file-upload">
-              <Button variant="outline" size="sm" asChild>
-                <span>
-                  <Upload className="w-4 h-4 mr-2" />
-                  上传文档
-                </span>
-              </Button>
-            </label>
-            <span className="text-sm text-gray-500">支持 TXT、DOC、PDF 等格式</span>
-          </div>
-        </div>
+        <MultiMediaInput
+          value={referenceExample}
+          onChange={setReferenceExample}
+          onMediaChange={handleMediaChange}
+          placeholder="输入现有的卖点、痛点、目标受众、Prompt脚本、视频描述等，或拖拽/粘贴文件..."
+          label="参考实例"
+          maxFiles={5}
+          acceptedTypes={['image/*', 'video/*', 'text/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']}
+        />
 
         {!recommendations && (
           <Button onClick={handleAnalyze} disabled={isAnalyzing} className="w-full">
@@ -419,6 +384,7 @@ export function AIReverseEngineer({ businessModule, onSuccess }: AIReverseEngine
               />
             </div>
 
+
             <Button onClick={handleSave} disabled={isAnalyzing} className="w-full">
               {isAnalyzing ? (
                 <>
@@ -426,7 +392,7 @@ export function AIReverseEngineer({ businessModule, onSuccess }: AIReverseEngine
                   保存中...
                 </>
               ) : (
-                '保存到模板库'
+                '保存模板'
               )}
             </Button>
           </CardContent>

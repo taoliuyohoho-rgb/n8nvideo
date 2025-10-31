@@ -1,5 +1,5 @@
-import { Service, HealthStatus, Metrics } from '../../core/types'
-import { EventBus } from '../../core/events/EventBus'
+import type { Service, HealthStatus, Metrics } from '../../core/types'
+import type { EventBus } from '../../core/events/EventBus'
 
 export interface UGCVideo {
   id: string

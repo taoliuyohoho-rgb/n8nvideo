@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 
-const prisma = new PrismaClient()
 const VERIFIED_MODELS_FILE = path.join(process.cwd(), 'verified-models.json')
 
 function getVerifiedProviders(): Set<string> {
@@ -117,10 +117,9 @@ async function fetchProviderModels(provider: string): Promise<Array<{
         if (list.length > 0) return list
       } catch {}
       return [
-        { modelName: 'gemini-2.5-flash', jsonModeSupport: true, toolUseSupport: true },
-        { modelName: 'gemini-2.5-pro', jsonModeSupport: true, toolUseSupport: true },
-        { modelName: 'gemini-1.5-flash', jsonModeSupport: true, toolUseSupport: false },
-        { modelName: 'gemini-1.5-pro', jsonModeSupport: true, toolUseSupport: false },
+        { modelName: 'gemini-2.0-flash-exp', jsonModeSupport: true, toolUseSupport: true },
+        { modelName: 'gemini-1.5-flash', jsonModeSupport: true, toolUseSupport: true },
+        { modelName: 'gemini-1.5-pro', jsonModeSupport: true, toolUseSupport: true },
       ]
     case 'deepseek':
       try {

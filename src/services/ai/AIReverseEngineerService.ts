@@ -4,12 +4,11 @@
  * 根据参考实例生成符合业务模块要求的三段式Prompt结构
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { recommendRank } from '../recommendation/recommend';
 import { AiExecutor } from './AiExecutor';
 import { logger } from '../logger/Logger';
 
-const prisma = new PrismaClient();
 
 export interface ReverseEngineerInput {
   referenceExample: string | File;
@@ -151,7 +150,7 @@ export class AIReverseEngineerService {
 
     try {
       // 获取业务模块要求
-      const requirements = this.getBusinessModuleRequirements(businessModule);
+      const requirements = await this.getBusinessModuleRequirements(businessModule);
 
       // 获取选择的模型和Prompt
       const [model, prompt] = await Promise.all([
@@ -166,29 +165,24 @@ export class AIReverseEngineerService {
       // 构建反推Prompt
       const reversePrompt = this.buildReversePrompt(referenceExample, businessModule, requirements);
 
-      // 调用AI生成三段式结构
-      const response = await this.aiExecutor.callWithSchema(
-        model.provider as any,
-        model.modelName,
-        reversePrompt,
-        {
-          type: 'object',
-          properties: {
-            inputRequirements: { type: 'string' },
-            outputRequirements: { type: 'string' },
-            outputRules: { type: 'string' },
-            suggestedTemplate: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                content: { type: 'string' }
-              },
-              required: ['name', 'content']
-            }
-          },
-          required: ['inputRequirements', 'outputRequirements', 'outputRules', 'suggestedTemplate']
-        }
+      // 调用AI生成三段式结构（通过统一 contract 接口，支持降级）
+      const response = await this.callWithFallback(reversePrompt, businessModule)
+
+      // 验证生成的模板是否符合规则
+      const validationResult = await this.validateGeneratedTemplate(
+        businessModule,
+        response.suggestedTemplate.content,
+        response.inputRequirements,
+        response.outputRequirements
       );
+
+      if (!validationResult.isValid) {
+        logger.warn('生成的模板不符合规则', { 
+          businessModule, 
+          errors: validationResult.errors,
+          warnings: validationResult.warnings 
+        });
+      }
 
       return {
         inputRequirements: response.inputRequirements,
@@ -272,9 +266,36 @@ export class AIReverseEngineerService {
   }
 
   /**
-   * 根据业务模块获取输入输出要求
+   * 根据业务模块获取输入输出要求（从规则管理系统获取）
    */
-  private getBusinessModuleRequirements(businessModule: string): BusinessModuleRequirements {
+  private async getBusinessModuleRequirements(businessModule: string): Promise<BusinessModuleRequirements> {
+    try {
+      // 从数据库获取该业务模块的规则
+      const rule = await prisma.promptRule.findUnique({
+        where: { businessModule }
+      });
+
+      if (rule) {
+        return {
+          inputRequirements: rule.inputFormat,
+          outputRequirements: rule.outputFormat,
+          outputRules: rule.analysisMethod
+        };
+      }
+
+      // 如果没有找到规则，使用默认要求
+      logger.warn('未找到业务模块规则，使用默认要求', { businessModule });
+      return this.getDefaultRequirements(businessModule);
+    } catch (error) {
+      logger.error('获取业务模块规则失败，使用默认要求', { businessModule, error: error instanceof Error ? error.message : '未知错误' });
+      return this.getDefaultRequirements(businessModule);
+    }
+  }
+
+  /**
+   * 获取默认的业务模块要求（兜底方案）
+   */
+  private getDefaultRequirements(businessModule: string): BusinessModuleRequirements {
     const requirements: Record<string, BusinessModuleRequirements> = {
       'product-analysis': {
         inputRequirements: '商品名称、类目、描述、目标市场、竞品内容（可选）',
@@ -294,6 +315,159 @@ export class AIReverseEngineerService {
     };
 
     return requirements[businessModule] || requirements['product-analysis'];
+  }
+
+  /**
+   * 验证生成的模板是否符合规则
+   */
+  private async validateGeneratedTemplate(
+    businessModule: string,
+    promptContent: string,
+    inputRequirements: string,
+    outputRequirements: string
+  ): Promise<{
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+  }> {
+    try {
+      // 调用规则验证API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/prompt-rules/validate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessModule,
+          promptContent,
+          variables: this.extractVariablesFromPrompt(promptContent),
+          outputContent: outputRequirements
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`验证API调用失败: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.data || { isValid: true, errors: [], warnings: [] };
+
+    } catch (error) {
+      logger.error('模板验证失败', { businessModule, error: error instanceof Error ? error.message : String(error) });
+      return { isValid: true, errors: [], warnings: ['验证服务不可用'] };
+    }
+  }
+
+  /**
+   * 从Prompt内容中提取变量
+   */
+  private extractVariablesFromPrompt(promptContent: string): string[] {
+    const variablePattern = /\{\{(\w+)\}\}/g;
+    const variables: string[] = [];
+    let match;
+    
+    while ((match = variablePattern.exec(promptContent)) !== null) {
+      if (!variables.includes(match[1])) {
+        variables.push(match[1]);
+      }
+    }
+    
+    return variables;
+  }
+
+  /**
+   * 带降级策略的AI调用
+   */
+  private async callWithFallback(
+    prompt: string, 
+    businessModule: string
+  ): Promise<{
+    inputRequirements: string;
+    outputRequirements: string;
+    outputRules: string;
+    suggestedTemplate: {
+      name: string;
+      content: string;
+    };
+  }> {
+    const { callWithSchema } = await import('./contract')
+    
+    // 获取可用的模型列表（排除配额超限的）
+    const availableModels = await this.getAvailableModels()
+    
+    // 按优先级尝试模型
+    for (const model of availableModels) {
+      try {
+        logger.info(`尝试使用模型: ${model.provider}/${model.modelName}`)
+        
+        const response = await callWithSchema<{ inputRequirements: string; outputRequirements: string; outputRules: string; suggestedTemplate: { name: string; content: string } }>({
+          prompt,
+          needs: { vision: false, search: false },
+          policy: { 
+            allowFallback: false, 
+            model: `${model.provider}/${model.modelName}`, 
+            requireJsonMode: true 
+          },
+          validator: (text: string) => {
+            try {
+              const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+              const json = JSON.parse(cleaned)
+              if (json && typeof json.inputRequirements === 'string' && typeof json.outputRequirements === 'string' && typeof json.outputRules === 'string' && json.suggestedTemplate && typeof json.suggestedTemplate.name === 'string' && typeof json.suggestedTemplate.content === 'string') {
+                return json
+              }
+              return null
+            } catch {
+              return null
+            }
+          }
+        })
+        
+        logger.info(`模型 ${model.provider}/${model.modelName} 调用成功`)
+        return response
+        
+      } catch (error: any) {
+        logger.warn(`模型 ${model.provider}/${model.modelName} 调用失败: ${error.message}`)
+        
+        // 如果是配额超限错误，继续尝试下一个模型
+        if (error.name === 'QuotaExceededError' || error.status === 429) {
+          continue
+        }
+        
+        // 其他错误也继续尝试下一个模型
+        continue
+      }
+    }
+    
+    // 所有模型都失败了
+    throw new Error('所有可用模型都无法完成请求，请检查模型配置或稍后重试')
+  }
+
+  /**
+   * 获取可用的模型列表
+   */
+  private async getAvailableModels(): Promise<Array<{ provider: string; modelName: string; id: string }>> {
+    try {
+      const models = await prisma.estimationModel.findMany({
+        where: { 
+          status: 'active',
+          // 排除配额超限的模型
+          NOT: { status: 'quota_exceeded' }
+        },
+        orderBy: [
+          { provider: 'asc' },
+          { pricePer1kTokens: 'asc' }
+        ]
+      })
+      
+      return models.map(m => ({
+        provider: m.provider,
+        modelName: m.modelName,
+        id: m.id
+      }))
+    } catch (error) {
+      logger.error('获取可用模型失败', { error: error instanceof Error ? error.message : String(error) })
+      return []
+    }
   }
 
   /**

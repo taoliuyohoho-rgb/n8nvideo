@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { enqueueEvent, enqueueFeedback, enqueueOutcome, flush } from '@/src/services/recommendation/asyncWriter'
+import { recordFeedback as banditRecord } from '@/src/services/recommendation/bandit'
 
-const prisma = new PrismaClient()
 
 type OutcomeInput = {
   latencyMs?: number
@@ -19,7 +21,20 @@ function badRequest(message: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    // 检查请求体是否为空
+    const text = await request.text()
+    if (!text || text.trim() === '') {
+      console.warn('[API]/recommend/feedback 收到空请求体')
+      return NextResponse.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Empty request body' } }, { status: 400 })
+    }
+    
+    let body
+    try {
+      body = JSON.parse(text)
+    } catch (parseError) {
+      console.error('[API]/recommend/feedback JSON解析失败:', parseError, '原始内容:', text.substring(0, 200))
+      return NextResponse.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Invalid JSON format' } }, { status: 400 })
+    }
     const {
       decisionId,
       userChoice,
@@ -39,63 +54,33 @@ export async function POST(request: NextRequest) {
 
     if (!decisionId) return badRequest('decisionId is required')
 
-    // Optional explicit feedback row
+    // Optional explicit feedback row (enqueue)
     let feedback: any = null
     if (userChoice && type) {
-      feedback = await prisma.recommendationFeedback.create({
-        data: {
-          decisionId,
-          feedbackType: String(type),
-          chosenCandidateId: String(userChoice),
-          reason: reason || null,
-        }
-      })
+      feedback = { decisionId, feedbackType: String(type), chosenCandidateId: String(userChoice), reason: reason || null }
+      enqueueFeedback(feedback)
+      // Update bandit immediately (success if explicit accept)
+      if (type === 'accept' || type === 'select') banditRecord(String(userChoice), { success: true })
+      if (type === 'reject') banditRecord(String(userChoice), { success: false })
     }
 
     // Event logging (expose/select/auto_select/execute_* / implicit_*)
-    const ev = await prisma.recommendationEvent.create({
-      data: {
-        decisionId,
-        eventType: eventType || (feedback ? 'explicit_feedback' : 'custom'),
-        payload: payload ? JSON.stringify(payload) : null,
-      }
-    })
+    const ev = { decisionId, eventType: eventType || (feedback ? 'explicit_feedback' : 'custom'), payload: payload ? JSON.stringify(payload) : null }
+    enqueueEvent(ev)
 
     // Outcome upsert (if any outcome-related fields provided)
     const outcomeInput: OutcomeInput = { latencyMs, costActual, qualityScore, conversion, rejected, editDistance, notes }
     const hasOutcome = Object.values(outcomeInput).some(v => v !== undefined && v !== null)
     let outcome: any = null
     if (hasOutcome) {
-      const existing = await prisma.recommendationOutcome.findUnique({ where: { decisionId } })
-      if (existing) {
-        outcome = await prisma.recommendationOutcome.update({
-          where: { decisionId },
-          data: {
-            latencyMs: latencyMs ?? existing.latencyMs,
-            costActual: costActual ?? existing.costActual,
-            qualityScore: qualityScore ?? existing.qualityScore,
-            conversion: conversion ?? existing.conversion,
-            rejected: rejected ?? existing.rejected,
-            editDistance: editDistance ?? existing.editDistance,
-            notes: notes ?? existing.notes,
-          }
-        })
-      } else {
-        outcome = await prisma.recommendationOutcome.create({
-          data: {
-            decisionId,
-            latencyMs: latencyMs ?? null,
-            costActual: costActual ?? null,
-            qualityScore: qualityScore ?? null,
-            conversion: conversion ?? null,
-            rejected: rejected ?? null,
-            editDistance: editDistance ?? null,
-            notes: notes ?? null,
-          }
-        })
-      }
+      outcome = { decisionId, latencyMs: latencyMs ?? null, costActual: costActual ?? null, qualityScore: qualityScore ?? null, conversion: conversion ?? null, rejected: rejected ?? null, editDistance: editDistance ?? null, notes: notes ?? null }
+      enqueueOutcome(outcome)
+      // Bandit reward update
+      if (userChoice) banditRecord(String(userChoice), { conversion, qualityScore, rejected })
     }
 
+    // Fire and forget flush
+    setTimeout(() => flush().catch(() => {}), 0)
     return NextResponse.json({ success: true, data: { feedback, event: ev, outcome } })
   } catch (error: any) {
     console.error('[API]/recommend/feedback error:', error)

@@ -1,18 +1,29 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=n8nvideo
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: unless-stopped
   app:
     build: .
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:./prisma/prod.db
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/n8nvideo?schema=public
       - PORT=3000
       - HOSTNAME=0.0.0.0
     volumes:
       - ./prisma:/app/prisma
       - ./credentials:/app/credentials
+    depends_on:
+      - db
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
@@ -30,3 +41,6 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+
+volumes:
+  db-data:

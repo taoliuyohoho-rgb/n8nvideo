@@ -1,12 +1,12 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 
-const prisma = new PrismaClient()
 
 export type TaskType = 
   | 'video_generation'
   | 'competitor_analysis'
   | 'comment_scraping'
   | 'style_parsing'
+  | 'style_matching'
   | 'prompt_generation'
   | 'video_analysis'
   | 'product_analysis'
@@ -91,7 +91,7 @@ export class TaskService {
   }
 
   /**
-   * 获取任务详情
+   * 获取任务详情（包含完整的 payload、result、metadata，会解析 JSON）
    */
   async getTask(taskId: string) {
     const task = await prisma.task.findUnique({
@@ -102,6 +102,7 @@ export class TaskService {
       return null
     }
 
+    // 获取详情时才解析完整的 JSON 字段
     return this.serializeTask(task)
   }
 
@@ -201,7 +202,7 @@ export class TaskService {
   }
 
   /**
-   * 查询任务列表
+   * 查询任务列表（优化版：只查询必要字段，不查询大字段）
    */
   async queryTasks(options: TaskQueryOptions = {}) {
     const where: any = {}
@@ -227,14 +228,35 @@ export class TaskService {
     const order = options.order || 'desc'
     orderBy[orderByField] = order
 
+    // 优化：只查询列表展示需要的字段，不查询大字段（payload、result、metadata）
     const tasks = await prisma.task.findMany({
       where,
       orderBy,
       take: options.limit || 50,
       skip: options.offset || 0,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        priority: true,
+        error: true,
+        progress: true,
+        traceId: true,
+        dedupeKey: true,
+        ownerId: true,
+        workerName: true,
+        retryCount: true,
+        maxRetries: true,
+        createdAt: true,
+        startedAt: true,
+        completedAt: true,
+        scheduledAt: true,
+        // 不查询 payload、result、metadata 大字段
+      }
     })
 
-    return tasks.map(task => this.serializeTask(task))
+    // 优化：列表模式不需要解析 JSON，直接返回
+    return tasks
   }
 
   /**

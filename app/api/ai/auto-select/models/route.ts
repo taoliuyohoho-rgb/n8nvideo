@@ -3,7 +3,8 @@
  * GET /api/ai/auto-select/models - 列出模型池
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
 import { getActiveModels } from '@/src/services/ai/estimation/models';
 
 export async function GET(request: NextRequest) {

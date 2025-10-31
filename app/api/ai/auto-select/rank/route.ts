@@ -3,11 +3,12 @@
  * POST /api/ai/auto-select/rank
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { rank } from '@/src/services/ai/estimation/rank';
 import { EstimationErrorClass, formatErrorResponse, isSoftError } from '@/src/services/ai/estimation/errors';
-import { RankRequest } from '@/src/services/ai/estimation/types';
+import type { RankRequest } from '@/src/services/ai/estimation/types';
 
 // Zod schema for request validation
 const SubjectRefSchema = z.object({

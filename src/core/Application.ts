@@ -1,7 +1,7 @@
 import { PluginManager } from './plugins/PluginManager'
 import { EventBus } from './events/EventBus'
 import { ConfigManager, ConfigFactory } from './config/ConfigManager'
-import { Service } from './types'
+import type { Service } from './types'
 import { VideoService } from '../services/video/VideoService'
 import { SoraVideoGenerator } from '../plugins/video/SoraVideoGenerator'
 import { GeminiAIService } from '../plugins/ai/GeminiAIService'

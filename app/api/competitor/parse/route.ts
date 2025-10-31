@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { unifiedCompetitorService } from '@/src/services/competitor/UnifiedCompetitorService'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { runCompetitorContract } from '@/src/services/ai/contracts'
+import { prisma } from '@/lib/prisma'
 
 /**
  * 统一竞品解析API
  * 支持：文本 | 图片 | 链接，自动识别并解析
- * 通过推荐引擎动态选择AI模型和Prompt
+ * 直接调用 runCompetitorContract（绕过傻逼编排器）
  */
 export async function POST(request: NextRequest) {
   try {
@@ -24,24 +26,60 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 调用统一竞品分析服务
-    const result = await unifiedCompetitorService.analyzeCompetitor(
-      {
-        productId,
-        input,
-        images,
-        isUrl
+    // 获取商品信息
+    const product = await prisma.product.findUnique({
+      where: { id: productId }
+    })
+
+    if (!product) {
+      return NextResponse.json(
+        { success: false, error: '商品不存在' },
+        { status: 404 }
+      )
+    }
+
+    // 将base64图片转换为dataURL（runCompetitorContract接受dataURL）
+    const imageDataURLs = images ? images
+      .filter((val: unknown) => typeof val === 'string' && (val as string).startsWith('data:image'))
+      .map((base64: string) => base64)
+      : undefined
+
+    // 直接调用 runCompetitorContract
+    const startTime = Date.now()
+    const analysisResult = await runCompetitorContract({
+      input: {
+        rawText: input || '',
+        images: imageDataURLs
       },
-      returnCandidates || false, // 是否返回候选项
-      chosenModelId, // 用户选择的模型ID
-      chosenPromptId // 用户选择的Prompt ID
-    )
+      needs: {
+        vision: !!(imageDataURLs && imageDataURLs.length > 0),
+        search: false,
+        streaming: false
+      },
+      policy: {
+        maxConcurrency: 3,
+        timeoutMs: 30000,
+        allowFallback: false
+      },
+      customPrompt: undefined,
+      context: {
+        productName: product.name,
+        category: product.category || '',
+        painPoints: []
+      }
+    })
+
+    const processingTime = Date.now() - startTime
 
     return NextResponse.json({
       success: true,
       data: {
-        ...result,
-        message: `已使用 ${result.aiModelUsed} 和 ${result.promptUsed} 模板解析`
+        description: analysisResult.description,
+        sellingPoints: analysisResult.sellingPoints,
+        painPoints: analysisResult.painPoints || [],
+        targetAudience: analysisResult.targetAudience || '',
+        processingTime,
+        message: `解析完成，提取 ${analysisResult.sellingPoints.length} 个卖点，${analysisResult.painPoints?.length || 0} 个痛点`
       }
     })
   } catch (error) {

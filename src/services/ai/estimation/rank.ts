@@ -3,8 +3,9 @@
  * 整合粗排、精排、探索、回退，提供统一Rank接口
  */
 
-import { PrismaClient } from '@prisma/client';
-import { RankRequest, RankResponse, CandidateItem } from './types';
+import { prisma } from '@/lib/prisma';
+import type { RankRequest, RankResponse} from './types';
+import { CandidateItem } from './types';
 import {
   DEFAULT_TOP_K,
   DEFAULT_EXPLORE_ENABLED,
@@ -25,7 +26,6 @@ import { epsilonGreedyExplore, shouldForceOffExplore } from './explore';
 import { filterCircuitBrokenModels, getLKG, setLKG } from './fallback';
 import { getSegmentMetrics } from './metrics';
 
-const prisma = new PrismaClient();
 
 /**
  * 主Rank函数

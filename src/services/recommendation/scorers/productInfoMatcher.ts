@@ -12,6 +12,7 @@ export interface ProductInfoItem {
   relevanceScore?: number;
   qualityScore?: number;
   recencyScore?: number;
+  matchScore?: number;
 }
 
 export interface ProductContext {

@@ -1,4 +1,4 @@
-import { DomainEvent, EventHandler } from '../types'
+import type { DomainEvent, EventHandler } from '../types'
 
 export class EventBus {
   private handlers: Map<string, EventHandler[]> = new Map()

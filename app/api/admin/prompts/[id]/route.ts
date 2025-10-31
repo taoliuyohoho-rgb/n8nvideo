@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
-const prisma = new PrismaClient()
 
 export async function GET(
   request: NextRequest,
@@ -28,9 +28,26 @@ export async function GET(
       )
     }
 
+    // 解析 variables JSON 字符串为数组
+    let variables = [];
+    if (prompt.variables) {
+      try {
+        variables = JSON.parse(prompt.variables);
+      } catch (error) {
+        console.error('解析 variables JSON 失败:', prompt.variables, error);
+        if (typeof prompt.variables === 'string') {
+          variables = prompt.variables.split(',').map(v => v.trim()).filter(v => v);
+        }
+      }
+    }
+    const parsedPrompt = {
+      ...prompt,
+      variables
+    };
+
     return NextResponse.json({
       success: true,
-      ...prompt
+      ...parsedPrompt
     })
   } catch (error) {
     console.error('获取Prompt失败:', error)

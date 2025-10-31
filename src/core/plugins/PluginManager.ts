@@ -1,4 +1,4 @@
-import { Plugin, PluginConfig } from '../types'
+import type { Plugin, PluginConfig } from '../types'
 
 export class PluginManager {
   private plugins: Map<string, Plugin> = new Map()

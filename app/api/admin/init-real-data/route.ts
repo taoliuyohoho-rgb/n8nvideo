@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient()
 
 // 从Google Sheets获取的商品数据
 const productsData = [

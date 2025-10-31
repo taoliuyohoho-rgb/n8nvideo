@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
+import type { MediaFile } from '@/components/MultiMediaInput';
+import { MultiMediaInput } from '@/components/MultiMediaInput'
 import { 
   FileText, 
   Video, 
@@ -57,6 +59,7 @@ export default function StyleParser({ onStylesAdded }: StyleParserProps) {
 
   // 文档解析状态
   const [documentContent, setDocumentContent] = useState('')
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
   const [documentUrl, setDocumentUrl] = useState('')
   const [documentCategory, setDocumentCategory] = useState('')
   const [documentTargetCountry, setDocumentTargetCountry] = useState('')
@@ -66,9 +69,14 @@ export default function StyleParser({ onStylesAdded }: StyleParserProps) {
   const [videoCategory, setVideoCategory] = useState('')
   const [videoTargetCountry, setVideoTargetCountry] = useState('')
 
+  // 处理媒体文件变化
+  const handleMediaChange = (files: MediaFile[]) => {
+    setMediaFiles(files);
+  };
+
   const handleDocumentParse = async () => {
-    if (!documentContent && !documentUrl) {
-      alert('请输入文档内容或URL')
+    if (!documentContent && !documentUrl && mediaFiles.length === 0) {
+      alert('请输入文档内容、URL或上传文件')
       return
     }
 
@@ -269,18 +277,15 @@ export default function StyleParser({ onStylesAdded }: StyleParserProps) {
             <CardContent className="space-y-6">
               {/* 文档内容输入区域 */}
               <div className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">粘贴文档内容</Label>
-                  <p className="text-xs text-gray-500 mb-3">支持直接粘贴文档内容，系统将保持原有格式进行分析</p>
-                  <Textarea
-                    value={documentContent}
-                    onChange={(e) => setDocumentContent(e.target.value)}
-                    placeholder="请粘贴文档内容，支持保持原有格式..."
-                    rows={10}
-                    className="font-mono text-sm border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors"
-                    style={{ whiteSpace: 'pre-wrap' }}
-                  />
-                </div>
+                <MultiMediaInput
+                  value={documentContent}
+                  onChange={setDocumentContent}
+                  onMediaChange={handleMediaChange}
+                  placeholder="请粘贴文档内容，支持保持原有格式，或直接粘贴/拖拽文件..."
+                  label="文档内容输入"
+                  maxFiles={3}
+                  acceptedTypes={['text/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']}
+                />
                 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -437,7 +442,7 @@ export default function StyleParser({ onStylesAdded }: StyleParserProps) {
                   key={style.id}
                   style={style}
                   isSelected={selectedStyles.has(style.id)}
-                  onSelect={() => {}}
+                  onSelect={handleToggleSelect}
                   onEdit={handleStyleEdit}
                   onDelete={handleStyleDelete}
                   onToggleSelect={handleToggleSelect}

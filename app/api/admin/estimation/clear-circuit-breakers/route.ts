@@ -2,7 +2,8 @@
  * 清空所有熔断状态
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
 import { clearAllCircuitBreakers } from '@/src/services/ai/estimation/fallback';
 
 export async function POST(request: NextRequest) {

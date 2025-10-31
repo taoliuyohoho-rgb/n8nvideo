@@ -33,9 +33,19 @@ export default function LoginPage() {
 
       if (result.success) {
         // 保存用户信息到localStorage
-        localStorage.setItem('user', JSON.stringify(result.data))
-        // 跳转到dashboard
-        router.push('/dashboard')
+        const userData = JSON.stringify(result.data)
+        localStorage.setItem('user', userData)
+        console.log('登录成功，用户信息已保存:', result.data)
+        console.log('localStorage 中的用户信息:', localStorage.getItem('user'))
+        
+        // 根据用户角色跳转
+        if (result.data.role === 'admin' || result.data.role === 'super_admin') {
+          console.log('跳转到 admin 页面')
+          router.push('/admin')
+        } else {
+          console.log('跳转到 dashboard 页面')
+          router.push('/dashboard')
+        }
       } else {
         setError(result.error || '登录失败')
       }
@@ -55,6 +65,11 @@ export default function LoginPage() {
           <CardDescription>
             请输入您的邮箱和密码登录系统
           </CardDescription>
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md text-left">
+            <p className="text-sm text-blue-800 font-medium mb-1">默认管理员账号：</p>
+            <p className="text-xs text-blue-700">邮箱: admin@126.com</p>
+            <p className="text-xs text-blue-700">密码: dongnanyaqifei</p>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">

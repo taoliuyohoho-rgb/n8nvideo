@@ -1,6 +1,6 @@
 // Pluggable scorer registry
 
-import { RecommendationScenario, RecommendRankRequest, CandidateItem } from './types';
+import type { RecommendationScenario, RecommendRankRequest, CandidateItem } from './types';
 
 export interface Scorer {
   // returns topK and full scored list (used to form alternatives)

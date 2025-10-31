@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server';
 
 // POST /api/admin/prompts/generate - 使用AI生成 Prompt 候选模板
 export async function POST(request: NextRequest) {
@@ -66,7 +67,7 @@ ${referenceExamples.map((ex: any, i: number) => `
     const aiConfigData = await aiConfigResponse.json();
     const promptGenerationAI = aiConfigData.promptGenerationAI;
 
-    if (!promptGenerationAI || !promptGenerationAI.provider || !promptGenerationAI.model) {
+    if (!promptGenerationAI?.provider || !promptGenerationAI.model) {
       return NextResponse.json(
         { success: false, error: 'AI配置不完整，无法生成Prompt模板' },
         { status: 400 }

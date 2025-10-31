@@ -1,6 +1,6 @@
 // Recommendation module - type definitions
 
-export type RecommendationScenario = 'product->style' | 'task->model' | 'task->prompt';
+export type RecommendationScenario = 'product->persona' | 'product->script' | 'product->content-elements' | 'task->model' | 'task->prompt' | 'video-script';
 
 export interface SubjectRef {
   entityType: 'product' | 'style' | 'video' | 'model' | 'prompt_template' | 'task';
@@ -43,6 +43,7 @@ export interface RecommendConstraints {
 export interface RecommendOptions {
   requestId?: string;
   strategyVersion?: string | null;
+  bypassCache?: boolean; // 跳过推荐缓存，用于需要多样性的场景（如脚本生成）
 }
 
 export interface RecommendRankRequest {

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { PainPointService } from '@/src/services/painpoint/PainPointService'
 
-const prisma = new PrismaClient()
 const painPointService = new PainPointService()
 
 // 创建评论爬取任务并合并痛点到商品

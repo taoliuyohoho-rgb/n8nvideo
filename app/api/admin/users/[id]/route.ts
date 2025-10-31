@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient()
 
 // 获取单个用户
 export async function GET(
@@ -54,7 +54,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { email, name, password, role, isActive } = await request.json()
+    const { email, name, password, role, isActive, organizationId } = await request.json()
 
     // 检查用户是否存在
     const existingUser = await prisma.user.findUnique({
@@ -68,8 +68,17 @@ export async function PUT(
       )
     }
 
-    // 如果更新邮箱，检查是否已被其他用户使用
+    // 如果更新邮箱，验证格式并检查是否已被其他用户使用
     if (email && email !== existingUser.email) {
+      // 验证邮箱格式
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(email)) {
+        return NextResponse.json(
+          { success: false, error: '邮箱格式不正确' },
+          { status: 400 }
+        )
+      }
+
       const emailExists = await prisma.user.findUnique({
         where: { email }
       })
@@ -77,6 +86,23 @@ export async function PUT(
       if (emailExists) {
         return NextResponse.json(
           { success: false, error: '该邮箱已被其他用户使用' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // 如果更新用户名，检查是否已被其他用户使用
+    if (name && name !== existingUser.name) {
+      const nameExists = await prisma.user.findFirst({
+        where: { 
+          name,
+          id: { not: params.id }
+        }
+      })
+
+      if (nameExists) {
+        return NextResponse.json(
+          { success: false, error: '该用户名已被其他用户使用' },
           { status: 400 }
         )
       }
@@ -99,6 +125,7 @@ export async function PUT(
     if (name) updateData.name = name
     if (role) updateData.role = role
     if (typeof isActive === 'boolean') updateData.isActive = isActive
+    if (typeof organizationId !== 'undefined') updateData.organizationId = organizationId
 
     // 如果提供了新密码，则加密存储
     if (password) {
