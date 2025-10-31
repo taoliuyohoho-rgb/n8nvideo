@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const promptReco = await recommendRank({
       scenario: 'task->prompt',
       task: { taskType: 'video-generation', contentType: 'video' },
-      context: { region: targetCountry, businessModule: 'video-prompt' },
+      context: { region: targetCountry } as any,
       constraints: { maxLatencyMs: 5000 },
     })
     
